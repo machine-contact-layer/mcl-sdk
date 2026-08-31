@@ -1,53 +1,78 @@
 # MCL SDK
 
-Developer-facing reference SDK for the **Machine Contact Layer**.
+Developer-facing low-level reference SDK for the **Machine Contact Layer**.
 
-The SDK is intentionally transport-neutral. Applications interact with MCL semantic objects and events while transport bindings implement MCL-AP, IP, BLE, UWB, or future profiles underneath.
+The primary reference SDK is a portable C implementation intended to run from small microcontrollers through larger embedded and host systems without changing the protocol contract.
 
-## Target developer experience
+## Implementation contract
 
-```python
-from mcl import Node, Hazard, Priority
+The pre-v0.1 reference stack targets a conservative **C99** subset.
 
-node = Node()
+The protocol-facing library must:
 
-@node.on(Hazard)
-async def on_hazard(event: Hazard):
-    print(event)
+- require no operating system;
+- require no dynamic allocation;
+- keep all mutable protocol state caller-owned;
+- accept caller-provided input, output, and scratch buffers;
+- require no hidden global mutable state;
+- use fixed-width integer types for protocol-facing data;
+- perform explicit byte and bit encoding rather than serializing C structs;
+- make byte order and quantization explicit;
+- return deterministic status codes rather than relying on global error state;
+- compile in freestanding mode without required libc symbols;
+- keep hardware, RTOS, audio, radio, clock, entropy, storage, and synchronization integration behind narrow platform or binding interfaces;
+- remain usable from C++ through an `extern "C"` API boundary.
 
-await node.start()
+The protocol specification remains language-neutral. The C implementation is a reference implementation, not the authority for protocol meaning.
 
-await node.broadcast(
-    Hazard(
-        hazard_class="collision_risk",
-        severity=3,
-        confidence=0.94,
-        priority=Priority.CRITICAL,
-    )
-)
+## Layer relationship
+
+```text
+application / product policy
+          |
+        MCL SDK
+          |
+  +-------+-------+
+  |               |
+MCL Core        MCL Link
+  |               |
+  +---- MCL Wire--+
+          |
+ transport binding
+ AP / IP / BLE / UWB / future
+          |
+ platform driver / hardware
 ```
 
-## Design rules
+The SDK must not turn receipt of a claim or request into automatic authority. Local product policy remains sovereign.
 
-- no AI model is required to use the protocol
-- semantic objects are explicit and typed
-- transports are pluggable
-- local policy decides how received claims/requests affect machine behavior
-- transport-specific metrics are available below the high-level API
-- the SDK should remain small enough for embedded/reference implementations to reproduce the core behavior
+## Memory model
 
-## Initial package
+The low-level API is designed around caller-owned objects and buffers:
 
-The pre-v0.1 package includes:
+```c
+mcl_status_t mcl_node_init(
+    mcl_node_t *node,
+    const mcl_node_config_t *config,
+    void *workspace,
+    size_t workspace_size);
+```
 
-- semantic event dataclasses
-- priority classes
-- async event handlers
-- pluggable transport interface
-- in-memory transport for tests and examples
+Exact API names and structures remain pre-v0.1 research until Core, Wire, and Link reference implementations are integrated.
 
-Acoustic, BLE, UWB, and IP transports will plug into the same interface as their repositories mature.
+## Portability target
+
+Initial portability gates are:
+
+- hosted GCC and Clang with strict warnings;
+- sanitizer-backed host tests;
+- freestanding ARM Cortex-M class compilation;
+- freestanding 32-bit RISC-V compilation;
+- no compiler extensions required by the protocol core;
+- no mandatory architecture-specific DSP dependency.
+
+Architecture-specific acceleration may be added behind optional backends without changing canonical protocol behavior.
 
 ## Status
 
-Private research repository. Pre-v0.1 reference implementation. API is not stable.
+Private research repository. Pre-v0.1 low-level reference SDK. API and ABI are not stable.
