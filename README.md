@@ -2,35 +2,25 @@
 
 Developer-facing low-level reference SDK for the **Machine Contact Layer**.
 
-The primary reference SDK is a portable C implementation intended to run from small microcontrollers through larger embedded and host systems without changing the protocol contract.
+The primary reference SDK is a portable C99 implementation designed to run from resource-constrained microcontrollers through embedded systems and hosted applications without changing the protocol contract.
 
-## Implementation contract
+## Implementation Contract
 
-The pre-v0.1 reference stack targets a conservative **C99** subset.
+The reference stack targets a conservative **C99** subset:
 
-The protocol-facing library must:
+- **Zero dynamic allocation**: `malloc`, `calloc`, `realloc`, and `free` are forbidden in protocol-facing code.
+- **Caller-owned memory**: All nodes, state structures, and scratch buffers are owned by the caller.
+- **Freestanding portability**: Requires zero OS syscalls, threads, filesystem operations, sockets, or runtime libc symbols.
+- **Deterministic error handling**: Returns explicit `mcl_sdk_status_t` codes rather than relying on global error states.
+- **No protocol mutation**: The SDK does not redefine Wire encoding, does not alter Link lifecycle semantics, and does not maintain a private semantic registry.
+- **Policy sovereignty**: Receiving an `AUTHORITY_CLAIM` or `REQUEST` produces decoded objects and nothing more. The SDK performs no automated authorization, privilege escalation, or policy decisions.
 
-- require no operating system;
-- require no dynamic allocation;
-- keep all mutable protocol state caller-owned;
-- accept caller-provided input, output, and scratch buffers;
-- require no hidden global mutable state;
-- use fixed-width integer types for protocol-facing data;
-- perform explicit byte and bit encoding rather than serializing C structs;
-- make byte order and quantization explicit;
-- return deterministic status codes rather than relying on global error state;
-- compile in freestanding mode without required libc symbols;
-- keep hardware, RTOS, audio, radio, clock, entropy, storage, and synchronization integration behind narrow platform or binding interfaces;
-- remain usable from C++ through an `extern "C"` API boundary.
-
-The protocol specification remains language-neutral. The C implementation is a reference implementation, not the authority for protocol meaning.
-
-## Layer relationship
+## Layer Relationship
 
 ```text
 application / product policy
           |
-        MCL SDK
+       MCL SDK
           |
   +-------+-------+
   |               |
@@ -38,41 +28,82 @@ MCL Core        MCL Link
   |               |
   +---- MCL Wire--+
           |
- transport binding
- AP / IP / BLE / UWB / future
-          |
- platform driver / hardware
+ transport callback (raw Wire bytes)
+  AP / IP / BLE / UWB / future
 ```
 
-The SDK must not turn receipt of a claim or request into automatic authority. Local product policy remains sovereign.
+### Transport Callback Boundary
 
-## Memory model
-
-The low-level API is designed around caller-owned objects and buffers:
+The SDK defines a minimal byte-transmission callback:
 
 ```c
-mcl_status_t mcl_node_init(
-    mcl_node_t *node,
-    const mcl_node_config_t *config,
-    void *workspace,
-    size_t workspace_size);
+typedef int32_t (*mcl_sdk_tx_fn)(
+    void *user,
+    const uint8_t *data,
+    size_t data_size);
 ```
 
-Exact API names and structures remain pre-v0.1 research until Core, Wire, and Link reference implementations are integrated.
+> [!IMPORTANT]
+> The bytes passed to `mcl_sdk_tx_fn` are **canonical Wire-encoded bytes**, not a normative MCL Link binary frame. The SDK does not prepend fake Link headers or framing wrappers. Physical framing, preamble, modulation, or packet encapsulation remains the responsibility of the underlying transport binding (e.g. MCL-AP, MCL-BLE, MCL-IP, MCL-UWB).
 
-## Portability target
+## Public API Overview
 
-Initial portability gates are:
+### Types and Status Codes
 
-- hosted GCC and Clang with strict warnings;
-- sanitizer-backed host tests;
-- freestanding ARM Cortex-M class compilation;
-- freestanding 32-bit RISC-V compilation;
-- no compiler extensions required by the protocol core;
-- no mandatory architecture-specific DSP dependency.
+```c
+typedef int32_t mcl_sdk_status_t;
+enum {
+    MCL_SDK_OK = 0,
+    MCL_SDK_ERR_INVALID_ARGUMENT = 1,
+    MCL_SDK_ERR_BUFFER_TOO_SMALL = 2,
+    MCL_SDK_ERR_WIRE_FAILURE = 3,
+    MCL_SDK_ERR_LINK_FAILURE = 4,
+    MCL_SDK_ERR_TX_UNAVAILABLE = 5,
+    MCL_SDK_ERR_TX_FAILURE = 6
+};
+```
 
-Architecture-specific acceleration may be added behind optional backends without changing canonical protocol behavior.
+### Node Model
+
+```c
+typedef struct {
+    uint16_t supported_wire_majors_mask;
+    mcl_sdk_tx_fn tx_fn;   /* Optional: NULL for receive-only nodes */
+    void *user_ctx;        /* Passed to tx_fn */
+} mcl_node_config_t;
+
+typedef struct {
+    mcl_link_t link;
+    mcl_sdk_tx_fn tx_fn;
+    void *user_ctx;
+    uint16_t supported_wire_majors_mask;
+} mcl_node_t;
+```
+
+### Operations
+
+- `mcl_node_init`: Initializes caller-owned node and underlying Link state machine.
+- `mcl_node_reset`: Resets node and transitions Link back to `IDLE`, invalidating any active context.
+- `mcl_node_send_tier0`: Encodes a Tier-0 object using `mcl_wire_tier0_encode` into caller-provided scratch and delivers exact Wire bytes to `tx_fn`.
+- `mcl_node_receive_tier0`: Decodes raw Wire bytes into a caller-owned `mcl_wire_tier0_t`.
+- `mcl_node_link_transition`: Steps the Link state machine through valid lifecycle transitions.
+- `mcl_node_link_install_context`: Installs a negotiated context (only permitted in active negotiating/session states).
+- `mcl_node_link_authorize_context`: Verifies an incoming context key against the active installed session context.
+
+## Minimal Example
+
+See [`examples/hello_world.c`](file:///C:/Users/marsm/Downloads/mcl/mcl-sdk/examples/hello_world.c) for a complete two-node in-memory exchange demonstrating:
+
+```text
+Node A (Presence semantic)
+  -> mcl_node_send_tier0()
+  -> Wire encoding
+  -> in-memory transport callback
+  -> Node B
+  -> mcl_node_receive_tier0()
+  -> decoded semantic object
+```
 
 ## Status
 
-Private research repository. Pre-v0.1 low-level reference SDK. API and ABI are not stable.
+Freestanding C99 reference vertical slice implemented and validated against canonical Wire and Link components.
