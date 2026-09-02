@@ -92,7 +92,7 @@ typedef struct {
 
 ## Minimal Example
 
-See [`examples/hello_world.c`](file:///C:/Users/marsm/Downloads/mcl/mcl-sdk/examples/hello_world.c) for a complete two-node in-memory exchange demonstrating:
+See [`examples/hello_world.c`](examples/hello_world.c) for a complete two-node in-memory exchange demonstrating:
 
 ```text
 Node A (Presence semantic)
