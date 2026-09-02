@@ -107,3 +107,29 @@ Node A (Presence semantic)
 ## Status
 
 Freestanding C99 reference vertical slice implemented and validated against canonical Wire and Link components.
+
+## Framed contact path
+
+`mcl_node_send_tier0` and `mcl_node_receive_tier0` move raw canonical Wire
+bytes, which is what a bearer like MCL-AP carries directly.
+
+`mcl_node_send_framed_tier0` and `mcl_node_receive_framed` move MCL Link frames,
+which is what the IP, BLE and UWB bindings carry and what a session needs: a
+frame class, a session reference, a sequence, and optional integrity.
+
+Both exist deliberately. A minimal broadcast beacon has no use for a session
+reference, and forcing one would spend bytes on exactly the transport where
+bytes are scarcest.
+
+Properties the tests pin:
+
+- a transmit sequence advances only after the transport accepted the frame, so
+  a failed send leaves no gap;
+- a session reference may only be emitted once a context is actually installed;
+- a malformed or truncated frame is rejected before any semantic decoding, so
+  it never reaches the Wire decoder;
+- a frame class that carries no semantics yields no object rather than having
+  meaning manufactured for it;
+- receiving a frame changes no link state and installs no context. An
+  `AUTHORITY_CLAIM` arriving in a frame does not become authority by being
+  received; it is information for local policy.

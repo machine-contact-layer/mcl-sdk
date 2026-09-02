@@ -52,6 +52,14 @@ if(MCL_SDK_BUILD_TESTS)
         C_EXTENSIONS NO)
     add_test(NAME mcl_sdk_test COMMAND mcl_sdk_test)
 
+    add_executable(mcl_sdk_test_framed tests/test_sdk_framed.c)
+    target_link_libraries(mcl_sdk_test_framed PRIVATE mcl_sdk)
+    set_target_properties(mcl_sdk_test_framed PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+    add_test(NAME mcl_sdk_framed COMMAND mcl_sdk_test_framed)
+
     add_executable(mcl_sdk_test_headers tests/test_headers.c)
     target_link_libraries(mcl_sdk_test_headers PRIVATE mcl_sdk)
     set_target_properties(mcl_sdk_test_headers PROPERTIES
