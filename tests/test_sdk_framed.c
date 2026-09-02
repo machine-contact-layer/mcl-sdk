@@ -91,7 +91,7 @@ static void test_framed_round_trip(void)
     make_presence(&obj);
 
     CHECK(mcl_node_send_framed_tier0(&tx_node, &obj, MCL_LINK_CLASS_DATA,
-                                     MCL_LINK_FLAG_INTEGRITY,
+                                     MCL_LINK_FLAG_FRAME_CHECK,
                                      scratch, sizeof(scratch), &sent) == MCL_SDK_OK,
           "framed send");
     CHECK(cap.calls == 1u, "transport called once");
@@ -295,7 +295,7 @@ static void test_malformed_frame_never_reaches_wire(void)
     init_node(&node, &cap);
     make_presence(&obj);
     CHECK(mcl_node_send_framed_tier0(&node, &obj, MCL_LINK_CLASS_DATA,
-                                     MCL_LINK_FLAG_INTEGRITY,
+                                     MCL_LINK_FLAG_FRAME_CHECK,
                                      scratch, sizeof(scratch), &sent) == MCL_SDK_OK,
           "send for corruption test");
 
