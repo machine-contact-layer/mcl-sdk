@@ -253,7 +253,7 @@ static void test_all_six_tier0_semantics(void)
 static void test_negative_cases(void)
 {
     mcl_node_t node;
-    mcl_node_config_t config;
+    mcl_node_config_t config = {0};
     memory_transport_t transport;
     uint8_t scratch[64];
     uint8_t wire_bytes[64];
