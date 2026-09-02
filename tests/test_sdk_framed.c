@@ -365,6 +365,95 @@ static void test_argument_validation(void)
     }
 }
 
+/*
+ * A Link frame declares its payload length exactly. If the semantic object
+ * inside ends before that length, the payload carries bytes nobody declared,
+ * and accepting the object while ignoring them would let two implementations
+ * disagree about what was sent while both reported success.
+ */
+static void test_payload_boundary_must_be_exact(void)
+{
+    mcl_node_t rx_node;
+    mcl_node_config_t cfg;
+    mcl_wire_tier0_t object, decoded;
+    mcl_link_frame_t frame;
+    uint8_t wire_buf[MCL_WIRE_TIER0_MAX_SIZE];
+    uint8_t padded[MCL_WIRE_TIER0_MAX_SIZE + 4];
+    uint8_t raw[256];
+    size_t wire_written = 0u, written = 0u, consumed = 0u;
+    uint8_t has_object = 9u;
+    size_t i;
+
+    printf("[TEST] a payload longer than the object it carries is rejected\n");
+
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
+    cfg.source_ref = 0x55u;
+    CHECK(mcl_node_init(&rx_node, &cfg) == MCL_SDK_OK, "receiver init");
+
+    make_presence(&object);
+    CHECK(mcl_wire_tier0_encode(&object, wire_buf, sizeof(wire_buf), &wire_written)
+              == MCL_WIRE_OK,
+          "object encodes");
+
+    /* Same object, but the frame declares three undeclared trailing bytes. */
+    memcpy(padded, wire_buf, wire_written);
+    for (i = 0u; i < 3u; ++i) {
+        padded[wire_written + i] = 0x00u;
+    }
+
+    memset(&frame, 0, sizeof(frame));
+    frame.frame_class = MCL_LINK_CLASS_CONTACT;
+    frame.source_ref = 0x77u;
+    frame.payload = padded;
+    frame.payload_len = (uint16_t)(wire_written + 3u);
+    CHECK(mcl_link_frame_encode(&frame, raw, sizeof(raw), &written) == MCL_LINK_OK,
+          "over-long payload still forms a valid frame");
+
+    CHECK(mcl_node_receive_framed(&rx_node, raw, written, &frame, &decoded,
+                                  &has_object, &consumed) == MCL_SDK_ERR_WIRE_FAILURE,
+          "trailing bytes inside the payload are rejected");
+    CHECK(has_object == 0u, "no object is reported for a rejected payload");
+
+    /* The identical frame with an exact payload length still decodes. */
+    memset(&frame, 0, sizeof(frame));
+    frame.frame_class = MCL_LINK_CLASS_CONTACT;
+    frame.source_ref = 0x77u;
+    frame.payload = wire_buf;
+    frame.payload_len = (uint16_t)wire_written;
+    CHECK(mcl_link_frame_encode(&frame, raw, sizeof(raw), &written) == MCL_LINK_OK,
+          "exact frame encodes");
+    CHECK(mcl_node_receive_framed(&rx_node, raw, written, &frame, &decoded,
+                                  &has_object, &consumed) == MCL_SDK_OK,
+          "the same object with an exact length decodes");
+    CHECK(has_object == 1u, "object reported");
+}
+
+/*
+ * A caller that omits `consumed` has made an argument error, not sent a bad
+ * frame. Reporting a frame failure would send them looking at the wire.
+ */
+static void test_missing_consumed_is_an_argument_error(void)
+{
+    mcl_node_t rx_node;
+    mcl_node_config_t cfg;
+    mcl_wire_tier0_t decoded;
+    mcl_link_frame_t frame;
+    uint8_t raw[64];
+    uint8_t has_object = 0u;
+
+    printf("[TEST] a missing consumed pointer is reported as an argument error\n");
+
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
+    CHECK(mcl_node_init(&rx_node, &cfg) == MCL_SDK_OK, "init");
+    memset(raw, 0, sizeof(raw));
+
+    CHECK(mcl_node_receive_framed(&rx_node, raw, sizeof(raw), &frame, &decoded,
+                                  &has_object, NULL) == MCL_SDK_ERR_INVALID_ARGUMENT,
+          "null consumed is an argument error, not a frame failure");
+}
+
 int main(void)
 {
     printf("MCL SDK framed contact path tests\n");
@@ -376,6 +465,8 @@ int main(void)
     test_receive_has_no_side_effects();
     test_non_semantic_classes_are_not_decoded();
     test_malformed_frame_never_reaches_wire();
+    test_payload_boundary_must_be_exact();
+    test_missing_consumed_is_an_argument_error();
     test_argument_validation();
 
     printf("\n%d checks, %d failed\n", tests_run, tests_failed);

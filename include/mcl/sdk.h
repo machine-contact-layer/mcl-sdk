@@ -123,10 +123,16 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
  * decoded object is written only when the frame class is one that carries
  * semantics; `has_object` reports whether it was.
  *
+ * The frame's payload_len is an exact boundary: a semantic object that ends
+ * before it means the payload carries undeclared trailing bytes, and the frame
+ * is rejected rather than partially accepted.
+ *
  * This has no side effects on link state. A received frame is information for
  * local policy, never an instruction: nothing here transitions the state
  * machine, and an AUTHORITY_CLAIM arriving in a frame does not become
  * authority by being received.
+ *
+ * All pointer arguments except `object` are required.
  */
 mcl_sdk_status_t mcl_node_receive_framed(
     mcl_node_t *node,

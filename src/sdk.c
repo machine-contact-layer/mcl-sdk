@@ -271,7 +271,8 @@ mcl_sdk_status_t mcl_node_receive_framed(
     mcl_wire_status_t wst;
     size_t wire_consumed = 0u;
 
-    if (node == NULL || data == NULL || frame == NULL || has_object == NULL) {
+    if (node == NULL || data == NULL || frame == NULL ||
+        has_object == NULL || consumed == NULL) {
         return MCL_SDK_ERR_INVALID_ARGUMENT;
     }
 
@@ -305,6 +306,17 @@ mcl_sdk_status_t mcl_node_receive_framed(
     wst = mcl_wire_tier0_decode(frame->payload, (size_t)frame->payload_len,
                                 object, &wire_consumed);
     if (wst != MCL_WIRE_OK) {
+        return MCL_SDK_ERR_WIRE_FAILURE;
+    }
+    if (wire_consumed != (size_t)frame->payload_len) {
+        /*
+         * payload_len is an exact declared boundary, so a semantic object that
+         * ends before it means the payload carries bytes nobody declared.
+         * Accepting the object and ignoring the remainder is how a framing
+         * discrepancy becomes a semantic one: two implementations would
+         * disagree about what was sent while both believed they had decoded it
+         * successfully.
+         */
         return MCL_SDK_ERR_WIRE_FAILURE;
     }
 
