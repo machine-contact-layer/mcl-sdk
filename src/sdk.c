@@ -537,11 +537,16 @@ mcl_sdk_status_t mcl_node_receive_framed(
      * Only classes that carry semantics are handed to Wire. A KEEPALIVE or an
      * ACK has no payload to interpret, and attempting to decode one as a
      * semantic object would manufacture meaning that was never sent.
+     *
+     * CAPABILITY and NEGOTIATION were in this list until they acquired their
+     * own contracts in mcl-link/spec/link-negotiation-v1.md. They carry Link
+     * CONTROL payloads now, like ACK and HANDOFF do, and the caller decodes
+     * them with mcl_link_capability_decode / mcl_link_negotiation_decode.
+     * Passing one to the Tier-0 decoder would interpret a 9-byte capability
+     * advertisement as whatever semantic object those bytes happen to spell.
      */
     if (frame->frame_class != MCL_LINK_CLASS_CONTACT &&
-        frame->frame_class != MCL_LINK_CLASS_DATA &&
-        frame->frame_class != MCL_LINK_CLASS_CAPABILITY &&
-        frame->frame_class != MCL_LINK_CLASS_NEGOTIATION) {
+        frame->frame_class != MCL_LINK_CLASS_DATA) {
         return MCL_SDK_OK;
     }
     if (object == NULL || frame->payload == NULL || frame->payload_len == 0u) {
@@ -712,11 +717,11 @@ mcl_sdk_status_t mcl_node_receive_framed_ext(
     }
 
     if (frame->frame_class != MCL_LINK_CLASS_CONTACT &&
-        frame->frame_class != MCL_LINK_CLASS_DATA &&
-        frame->frame_class != MCL_LINK_CLASS_CAPABILITY &&
-        frame->frame_class != MCL_LINK_CLASS_NEGOTIATION) {
+        frame->frame_class != MCL_LINK_CLASS_DATA) {
         /* A class that carries no semantics yields no object rather than
-         * having meaning manufactured for it. */
+         * having meaning manufactured for it. CAPABILITY and NEGOTIATION now
+         * carry Link control payloads, not semantic objects; see the note on
+         * the other receive path. */
         return MCL_SDK_OK;
     }
     if (object == NULL || frame->payload == NULL || frame->payload_len == 0u) {

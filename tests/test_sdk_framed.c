@@ -316,7 +316,10 @@ static void test_receive_has_no_side_effects(void)
     obj.priority = 3u;
     obj.source_ref = 0x99999999u;
 
-    CHECK(mcl_node_send_framed_tier0(&node, &obj, MCL_LINK_CLASS_NEGOTIATION,
+    /* DATA, not NEGOTIATION. The class was incidental to this test -- its
+     * point is that reception grants nothing -- and NEGOTIATION now carries a
+     * Link control payload rather than a semantic object. */
+    CHECK(mcl_node_send_framed_tier0(&node, &obj, MCL_LINK_CLASS_DATA,
                                      0u, scratch, sizeof(scratch), &sent) == MCL_SDK_OK,
           "send authority claim");
 
@@ -362,6 +365,35 @@ static void test_non_semantic_classes_are_not_decoded(void)
     CHECK(has_object == 0u,
           "a keepalive carries no semantics, so none are manufactured");
     CHECK(frame.frame_class == MCL_LINK_CLASS_KEEPALIVE, "class preserved");
+
+    /*
+     * CAPABILITY and NEGOTIATION belong here now. They were handed to the
+     * Tier-0 decoder until they acquired their own control contracts in
+     * link-negotiation-v1.md; passing one through would interpret a 9-byte
+     * capability advertisement as whatever object those bytes happen to spell.
+     */
+    {
+        const mcl_link_frame_class_t control_classes[2] = {
+            MCL_LINK_CLASS_CAPABILITY,
+            MCL_LINK_CLASS_NEGOTIATION
+        };
+        size_t k;
+
+        for (k = 0u; k < 2u; ++k) {
+            has_object = 1u;
+            CHECK(mcl_node_send_framed_tier0(&node, &obj, control_classes[k],
+                                             0u, scratch, sizeof(scratch),
+                                             &sent) == MCL_SDK_OK,
+                  "send control-class frame");
+            CHECK(mcl_node_receive_framed(&node, TEST_TRANSPORT, cap.buffer,
+                                          cap.size, &frame, &decoded,
+                                          &has_object, &consumed) == MCL_SDK_OK,
+                  "receive control-class frame");
+            CHECK(has_object == 0u,
+                  "a Link control class yields no semantic object");
+            CHECK(frame.frame_class == control_classes[k], "class preserved");
+        }
+    }
 }
 
 static void test_malformed_frame_never_reaches_wire(void)
