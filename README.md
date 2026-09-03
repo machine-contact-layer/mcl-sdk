@@ -28,23 +28,59 @@ MCL Core        MCL Link
   |               |
   +---- MCL Wire--+
           |
- transport callback (raw Wire bytes)
+ transport callback (told WHICH bearer)
   AP / IP / BLE / UWB / future
 ```
 
 ### Transport Callback Boundary
 
-The SDK defines a minimal byte-transmission callback:
-
 ```c
 typedef int32_t (*mcl_sdk_tx_fn)(
     void *user,
+    uint8_t transport_id,
     const uint8_t *data,
     size_t data_size);
 ```
 
+**The transport is a parameter, and that is what makes migration
+expressible.** An earlier revision had no `transport_id`, so a node had exactly
+one way out — which cannot express a migration, the one thing this layer exists
+to do. During a migration a contact spans two media at once:
+
+```text
+TRANSPORT_OFFER / ACCEPT        old transport
+PATH_CHALLENGE / PATH_RESPONSE  candidate transport
+COMMIT / CONFIRM                candidate transport
+ordinary traffic                depends on the cutover state
+```
+
+With one untagged callback an integrator had to infer which socket,
+characteristic or speaker each call meant from the order of calls. The SDK now
+derives it from the contact state and says so on every call.
+
+**The return value is three-way, and the distinction is load-bearing:**
+
+| Return | Meaning |
+|---|---|
+| `0` | Accepted for transmission. |
+| `< 0` | **Definitely** not transmitted. Nothing left this machine. |
+| `> 0` | Outcome **unknown**. It may or may not have left. |
+
+This exists because of `COMMIT`. Committing a migration is irrevocable once the
+bytes are transmitted, so the SDK must not enter that state for a frame the
+transport is certain it never sent — and *must* enter it for one the transport
+cannot vouch for, because the peer may have it. Collapsing "not sent" and
+"unknown" forces a choice between a contact stuck irrevocably on nothing and a
+rollback after a commit the peer may have acted on. A transport that genuinely
+cannot tell the difference **MUST** return `> 0`.
+
 > [!IMPORTANT]
-> The bytes passed to `mcl_sdk_tx_fn` are **canonical Wire-encoded bytes**, not a normative MCL Link binary frame. The SDK does not prepend fake Link headers or framing wrappers. Physical framing, preamble, modulation, or packet encapsulation remains the responsibility of the underlying transport binding (e.g. MCL-AP, MCL-BLE, MCL-IP, MCL-UWB).
+> What the callback carries depends on which path produced it. The raw Tier-0
+> path (`mcl_node_send_tier0`) delivers canonical Wire bytes, which is what a
+> bearer like MCL-AP carries directly. The framed and handoff paths deliver
+> complete MCL Link frames, which is what the IP, BLE and UWB bindings carry.
+> Physical framing, preamble, modulation and packet encapsulation remain the
+> transport binding's responsibility in both cases.
 
 ## Public API Overview
 
@@ -59,7 +95,14 @@ enum {
     MCL_SDK_ERR_WIRE_FAILURE = 3,
     MCL_SDK_ERR_LINK_FAILURE = 4,
     MCL_SDK_ERR_TX_UNAVAILABLE = 5,
-    MCL_SDK_ERR_TX_FAILURE = 6
+    MCL_SDK_ERR_TX_FAILURE = 6,
+    MCL_SDK_ERR_FRAME_FAILURE = 7,
+    MCL_SDK_ERR_INVALID_STATE = 8,
+    MCL_SDK_ERR_TX_NOT_SENT = 9,    /* transport is certain nothing left */
+    MCL_SDK_ERR_TX_UNCERTAIN = 10,  /* transport cannot say; retransmit */
+    MCL_SDK_ERR_WRONG_TRANSPORT = 11,
+    MCL_SDK_ERR_QUIESCED = 12,      /* cutover in progress; not an error */
+    MCL_SDK_NOT_ADDRESSED = 13      /* decoded, addressed elsewhere */
 };
 ```
 
@@ -70,25 +113,69 @@ typedef struct {
     uint16_t supported_wire_majors_mask;
     mcl_sdk_tx_fn tx_fn;   /* Optional: NULL for receive-only nodes */
     void *user_ctx;        /* Passed to tx_fn */
+    uint32_t source_ref;   /* Contact reference, NOT an identity */
+    uint8_t transport_id;  /* Which bearer this contact begins on */
+    mcl_contact_role_t role;  /* Ordering only; confers no authority */
 } mcl_node_config_t;
 
 typedef struct {
-    mcl_link_t link;
+    mcl_link_t link;       /* protocol lifecycle */
+    mcl_contact_t contact; /* transport continuity */
     mcl_sdk_tx_fn tx_fn;
     void *user_ctx;
     uint16_t supported_wire_majors_mask;
+    uint32_t source_ref;
+    uint16_t tx_sequence;
 } mcl_node_t;
 ```
 
+A node holds **two** state machines answering different questions. `mcl_link_t`
+is the protocol lifecycle: have we discovered a peer, exchanged capabilities,
+negotiated, established? `mcl_contact_t` is transport continuity: which medium
+carries this contact, and is a change of medium under way? Neither implies the
+other and neither is derived from the other. They cross in exactly one place,
+which the SDK owns: a migration may only be driven while the lifecycle is
+`ESTABLISHED` or `HANDOFF`, and the lifecycle may not leave those states while a
+migration is outstanding.
+
+One node tracks one contact. A machine holding several concurrent contacts
+instantiates several nodes; that is a real limitation rather than an oversight,
+recorded in `mcl-link/research/secure-contact-threat-model.md`.
+
 ### Operations
 
-- `mcl_node_init`: Initializes caller-owned node and underlying Link state machine.
-- `mcl_node_reset`: Resets node and transitions Link back to `IDLE`, invalidating any active context.
-- `mcl_node_send_tier0`: Encodes a Tier-0 object using `mcl_wire_tier0_encode` into caller-provided scratch and delivers exact Wire bytes to `tx_fn`.
-- `mcl_node_receive_tier0`: Decodes raw Wire bytes into a caller-owned `mcl_wire_tier0_t`.
-- `mcl_node_link_transition`: Steps the Link state machine through valid lifecycle transitions.
-- `mcl_node_link_install_context`: Installs a negotiated context (only permitted in active negotiating/session states).
-- `mcl_node_link_authorize_context`: Verifies an incoming context key against the active installed session context.
+**Node lifecycle**
+- `mcl_node_init`, `mcl_node_reset`
+
+**Raw Tier-0 path** — canonical Wire bytes, for bearers that carry them directly
+- `mcl_node_send_tier0`, `mcl_node_receive_tier0`
+
+**Framed contact path** — MCL Link frames
+- `mcl_node_send_framed_tier0`, `mcl_node_receive_framed`
+
+**Extension-aware framed path** — for objects carrying Wire extensions
+- `mcl_node_send_framed_tier0_ext`, `mcl_node_receive_framed_ext`
+
+**Handoff control path** — migration as an on-wire protocol
+- `mcl_node_send_handoff`, `mcl_node_receive_handoff`, `mcl_node_apply_handoff`
+
+**State access**
+- `mcl_node_get_contact`, `mcl_node_get_contact_const`
+- `mcl_node_get_link`, `mcl_node_get_link_const`
+- `mcl_node_link_transition`, `mcl_node_link_install_context`,
+  `mcl_node_link_authorize_context`
+
+Receiving is transport-aware throughout: `mcl_node_receive_framed` and
+`mcl_node_receive_handoff` take the arrival transport and refuse a frame that
+arrived on a bearer this contact does not live on. Without that argument the SDK
+could not perform the one check path validation depends on — a `PATH_RESPONSE`
+fed in from the old path would otherwise validate a candidate that had never
+carried a single byte.
+
+Addressing is explicit: `MCL_LINK_FLAG_DESTINATION` addresses a frame to this
+contact's peer, whose reference was learned during first contact. There is no
+destination parameter, because a node holds one contact and can address only
+that contact's peer.
 
 ## Minimal Example
 
@@ -106,7 +193,13 @@ Node A (Presence semantic)
 
 ## Status
 
-Freestanding C99 reference vertical slice implemented and validated against canonical Wire and Link components.
+Freestanding C99 reference implementation, validated against canonical Wire and
+Link components and exercised between two machines over real radios.
+
+For what this repository claims in the v1.0 release, see
+[`mcl-core/governance/V1_SCOPE.md`](../mcl-core/governance/V1_SCOPE.md). The
+public API is Stable in v1 at **source compatibility only**; no binary ABI
+stability is promised.
 
 ## Framed contact path
 
@@ -175,3 +268,31 @@ retransmitting `COMMIT`.
 
 Completing the sequence establishes reachability on the candidate path and
 nothing else. Every reference in it crosses an observable medium in the clear.
+
+## Migration over real radios
+
+`tests/test_sdk_handoff.c` proves the sequence between two nodes sharing a
+buffer. That is not the same as proving it over a medium, so it was also run
+over two.
+
+[`hardware/esp32-dual-peer`](hardware/esp32-dual-peer) holds a Wi-Fi SoftAP with
+a UDP socket **and** a BLE GATT server up simultaneously on one ESP32-S3, with a
+single `mcl_node_t` across both;
+[`tools/dual-transport-peer`](tools/dual-transport-peer) is the host half. One
+contact survived **104 changes of medium**, including 100 consecutive
+alternating BLE↔IP migrations, across 2989 checks with none failed, and the host
+and board records agree frame for frame.
+
+The case that needed two live radios is a control that is correct in every
+reference delivered over the **wrong** medium. It was refused. That is the check
+path validation depends on, and a single-transport rig cannot construct it at
+all.
+
+The run also found a defect no loopback test could: every send path honoured
+`MCL_LINK_FLAG_DESTINATION` and then set `destination_ref` to zero, so an
+addressed frame was addressed to nobody. See
+[`evidence/e4-dual-transport-migration-20260903`](evidence/e4-dual-transport-migration-20260903).
+
+None of this is independent interoperability. Both ends compile these same
+sources, so a shared misreading of the specification passes on both sides and is
+invisible in the result.
