@@ -1,5 +1,84 @@
 #include "mcl/sdk.h"
 
+/* ---------- transport-aware egress and ingress ----------
+ *
+ * Every send resolves WHICH transport before it encodes anything, and every
+ * receive is told where the bytes arrived. See the tx callback contract in
+ * sdk.h for why a single untagged transmit path cannot express a migration.
+ */
+
+/* Map a transmit callback's three-way return onto SDK status. */
+static mcl_sdk_status_t mcl_node_tx_status(int32_t tx_res)
+{
+    if (tx_res == 0) {
+        return MCL_SDK_OK;
+    }
+    if (tx_res < 0) {
+        /* The transport is certain nothing left this machine. */
+        return MCL_SDK_ERR_TX_NOT_SENT;
+    }
+    /*
+     * The transport cannot say. Treated as possibly transmitted everywhere it
+     * matters: the peer may hold these bytes, and assuming otherwise is the
+     * inference that produces a split contact.
+     */
+    return MCL_SDK_ERR_TX_UNCERTAIN;
+}
+
+/*
+ * Did the frame possibly leave? True for accepted and for uncertain.
+ *
+ * Used for anything that must not be repeated with the same value -- the
+ * sequence number -- and for the irrevocable COMMIT transition.
+ */
+static int mcl_node_tx_possibly_sent(int32_t tx_res)
+{
+    return tx_res >= 0;
+}
+
+/* The link states in which a migration may be driven. See sdk.h. */
+static int mcl_node_link_permits_migration(const mcl_node_t *node)
+{
+    return node->link.state == MCL_LINK_STATE_ESTABLISHED ||
+           node->link.state == MCL_LINK_STATE_HANDOFF;
+}
+
+/*
+ * Is this contact reachable on the transport these bytes arrived on?
+ *
+ * During a migration both media are legitimate: ordinary traffic may still be
+ * on the old one while the controls are on the candidate. Anything else is a
+ * bearer this contact does not live on.
+ */
+static int mcl_node_transport_belongs(
+    const mcl_node_t *node,
+    uint8_t arrival_transport)
+{
+    if (arrival_transport == MCL_CONTACT_TRANSPORT_RESERVED) {
+        return 0;
+    }
+    if (arrival_transport == node->contact.active_transport) {
+        return 1;
+    }
+    return node->contact.pending_migration_ref != MCL_CONTACT_MIGRATION_NONE &&
+           arrival_transport == node->contact.pending_transport;
+}
+
+/*
+ * Is the frame addressed elsewhere?
+ *
+ * A frame with no destination is for whoever hears it, which is how broadcast
+ * first contact works. One that names a destination names it for a reason.
+ */
+static int mcl_node_frame_addressed_elsewhere(
+    const mcl_node_t *node,
+    const mcl_link_frame_t *frame)
+{
+    return (frame->flags & MCL_LINK_FLAG_DESTINATION) != 0u &&
+           frame->destination_ref != node->source_ref;
+}
+
+
 mcl_sdk_status_t mcl_node_init(
     mcl_node_t *node,
     const mcl_node_config_t *config)
@@ -71,8 +150,11 @@ mcl_sdk_status_t mcl_node_send_tier0(
     size_t *bytes_sent)
 {
     mcl_wire_status_t wst;
+    mcl_link_status_t lst;
     size_t written = 0u;
     int32_t tx_res;
+    uint8_t transport = 0u;
+    uint8_t quiesced = 0u;
 
     if (node == NULL || object == NULL || scratch == NULL || scratch_capacity == 0u) {
         return MCL_SDK_ERR_INVALID_ARGUMENT;
@@ -90,9 +172,23 @@ mcl_sdk_status_t mcl_node_send_tier0(
         return MCL_SDK_ERR_WIRE_FAILURE;
     }
 
-    tx_res = node->tx_fn(node->user_ctx, scratch, written);
+    /*
+     * The raw path carries no Link frame and therefore no contact routing, but
+     * it still has to leave on a specific bearer. It uses the contact's data
+     * transport, and is quiesced during a cutover for the same reason the
+     * framed path is.
+     */
+    lst = mcl_contact_data_transport(&node->contact, &transport, &quiesced);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_INVALID_STATE;
+    }
+    if (quiesced != 0u) {
+        return MCL_SDK_ERR_QUIESCED;
+    }
+
+    tx_res = node->tx_fn(node->user_ctx, transport, scratch, written);
     if (tx_res != 0) {
-        return MCL_SDK_ERR_TX_FAILURE;
+        return mcl_node_tx_status(tx_res);
     }
 
     if (bytes_sent != NULL) {
@@ -167,6 +263,21 @@ mcl_sdk_status_t mcl_node_link_transition(
         return MCL_SDK_ERR_INVALID_ARGUMENT;
     }
 
+    if (mcl_node_link_permits_migration(node) != 0 &&
+        new_state != MCL_LINK_STATE_ESTABLISHED &&
+        new_state != MCL_LINK_STATE_HANDOFF &&
+        node->contact.pending_migration_ref != MCL_CONTACT_MIGRATION_NONE) {
+        /*
+         * The other half of the crossing invariant. Leaving the states where a
+         * migration may be driven, while one is outstanding, would leave the
+         * contact mid-transaction with no lifecycle able to carry it -- and
+         * from COMMITTING it would abandon a commit the peer may have acted on
+         * by a route that does not go through mcl_contact_abandon_migration at
+         * all. Close the contact first, or finish the migration.
+         */
+        return MCL_SDK_ERR_INVALID_STATE;
+    }
+
     lst = mcl_link_transition(&node->link, new_state);
     if (lst != MCL_LINK_OK) {
         return MCL_SDK_ERR_LINK_FAILURE;
@@ -229,12 +340,27 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
     size_t wire_written = 0u;
     size_t frame_written = 0u;
     int32_t tx_res;
+    uint8_t transport = 0u;
+    uint8_t quiesced = 0u;
 
     if (node == NULL || object == NULL || scratch == NULL || scratch_capacity == 0u) {
         return MCL_SDK_ERR_INVALID_ARGUMENT;
     }
     if (node->tx_fn == NULL) {
         return MCL_SDK_ERR_TX_UNAVAILABLE;
+    }
+
+    /*
+     * Resolve the bearer before encoding anything. During a cutover this
+     * refuses rather than transmitting onto a medium the peer may have left;
+     * see mcl_contact_data_transport.
+     */
+    lst = mcl_contact_data_transport(&node->contact, &transport, &quiesced);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_INVALID_STATE;
+    }
+    if (quiesced != 0u) {
+        return MCL_SDK_ERR_QUIESCED;
     }
 
     wst = mcl_wire_tier0_encode(object, wire_buf, sizeof(wire_buf), &wire_written);
@@ -291,15 +417,22 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
         return MCL_SDK_ERR_FRAME_FAILURE;
     }
 
-    tx_res = node->tx_fn(node->user_ctx, scratch, frame_written);
-    if (tx_res != 0) {
-        return MCL_SDK_ERR_TX_FAILURE;
-    }
+    tx_res = node->tx_fn(node->user_ctx, transport, scratch, frame_written);
 
-    /* Advance only after the transport accepted the frame. */
-    if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
+    /*
+     * Advance the sequence for anything that POSSIBLY left, not only for what
+     * was acknowledged. A frame whose fate the transport could not report may
+     * be in the peer's hands, and reusing its ordinal would give two different
+     * frames one name.
+     */
+    if (mcl_node_tx_possibly_sent(tx_res) != 0 &&
+        (flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
         node->tx_sequence = (uint16_t)(node->tx_sequence + 1u);
     }
+    if (tx_res != 0) {
+        return mcl_node_tx_status(tx_res);
+    }
+
     if (bytes_sent != NULL) {
         *bytes_sent = frame_written;
     }
@@ -309,6 +442,7 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
 
 mcl_sdk_status_t mcl_node_receive_framed(
     mcl_node_t *node,
+    uint8_t arrival_transport,
     const uint8_t *data,
     size_t data_size,
     mcl_link_frame_t *frame,
@@ -328,6 +462,15 @@ mcl_sdk_status_t mcl_node_receive_framed(
     *has_object = 0u;
 
     /*
+     * Checked before decoding. A bearer this contact does not live on has no
+     * business delivering frames into it, and refusing early keeps the decoder
+     * off bytes that were never addressed to this contact at all.
+     */
+    if (mcl_node_transport_belongs(node, arrival_transport) == 0) {
+        return MCL_SDK_ERR_WRONG_TRANSPORT;
+    }
+
+    /*
      * Decode the frame on its own terms first. A malformed frame must never
      * reach the semantic decoder, and an unknown frame class is rejected
      * rather than guessed at.
@@ -335,6 +478,12 @@ mcl_sdk_status_t mcl_node_receive_framed(
     lst = mcl_link_frame_decode(data, data_size, frame, consumed);
     if (lst != MCL_LINK_OK) {
         return MCL_SDK_ERR_FRAME_FAILURE;
+    }
+
+    if (mcl_node_frame_addressed_elsewhere(node, frame) != 0) {
+        /* Decoded, and for someone else. Reported rather than silently
+         * dropped, so a caller can see it heard the frame. */
+        return MCL_SDK_NOT_ADDRESSED;
     }
 
     /*
@@ -394,6 +543,8 @@ mcl_sdk_status_t mcl_node_send_framed_tier0_ext(
     size_t wire_written = 0u;
     size_t frame_written = 0u;
     int32_t tx_res;
+    uint8_t transport = 0u;
+    uint8_t quiesced = 0u;
 
     if (node == NULL || object == NULL || wire_scratch == NULL ||
         frame_scratch == NULL || wire_scratch_capacity == 0u ||
@@ -402,6 +553,14 @@ mcl_sdk_status_t mcl_node_send_framed_tier0_ext(
     }
     if (node->tx_fn == NULL) {
         return MCL_SDK_ERR_TX_UNAVAILABLE;
+    }
+
+    lst = mcl_contact_data_transport(&node->contact, &transport, &quiesced);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_INVALID_STATE;
+    }
+    if (quiesced != 0u) {
+        return MCL_SDK_ERR_QUIESCED;
     }
 
     wst = mcl_wire_tier0_encode_ext(object, extensions, extension_count,
@@ -445,15 +604,17 @@ mcl_sdk_status_t mcl_node_send_framed_tier0_ext(
         return MCL_SDK_ERR_FRAME_FAILURE;
     }
 
-    tx_res = node->tx_fn(node->user_ctx, frame_scratch, frame_written);
-    if (tx_res != 0) {
-        return MCL_SDK_ERR_TX_FAILURE;
-    }
+    tx_res = node->tx_fn(node->user_ctx, transport, frame_scratch, frame_written);
 
-    /* Advance only after the transport accepted the frame. */
-    if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
+    /* Advance for anything that possibly left; see mcl_node_send_framed_tier0. */
+    if (mcl_node_tx_possibly_sent(tx_res) != 0 &&
+        (flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
         node->tx_sequence = (uint16_t)(node->tx_sequence + 1u);
     }
+    if (tx_res != 0) {
+        return mcl_node_tx_status(tx_res);
+    }
+
     if (bytes_sent != NULL) {
         *bytes_sent = frame_written;
     }
@@ -463,13 +624,14 @@ mcl_sdk_status_t mcl_node_send_framed_tier0_ext(
 
 mcl_sdk_status_t mcl_node_receive_framed_ext(
     mcl_node_t *node,
+    uint8_t arrival_transport,
     const uint8_t *data,
     size_t data_size,
     mcl_link_frame_t *frame,
     mcl_wire_tier0_t *object,
     mcl_wire_extension_reader_t *reader,
-    mcl_wire_extension_known_fn known,
-    void *known_user,
+    mcl_wire_extension_accept_fn accept,
+    void *accept_user,
     uint8_t *has_object,
     size_t *consumed)
 {
@@ -484,9 +646,17 @@ mcl_sdk_status_t mcl_node_receive_framed_ext(
 
     *has_object = 0u;
 
+    if (mcl_node_transport_belongs(node, arrival_transport) == 0) {
+        return MCL_SDK_ERR_WRONG_TRANSPORT;
+    }
+
     lst = mcl_link_frame_decode(data, data_size, frame, consumed);
     if (lst != MCL_LINK_OK) {
         return MCL_SDK_ERR_FRAME_FAILURE;
+    }
+
+    if (mcl_node_frame_addressed_elsewhere(node, frame) != 0) {
+        return MCL_SDK_NOT_ADDRESSED;
     }
 
     if (frame->frame_class != MCL_LINK_CLASS_CONTACT &&
@@ -501,10 +671,10 @@ mcl_sdk_status_t mcl_node_receive_framed_ext(
         return MCL_SDK_OK;
     }
 
-    wst = mcl_wire_tier0_decode_ext_known(frame->payload,
-                                          (size_t)frame->payload_len,
-                                          object, reader, known, known_user,
-                                          &wire_consumed);
+    wst = mcl_wire_tier0_decode_ext_accept(frame->payload,
+                                           (size_t)frame->payload_len,
+                                           object, reader, accept, accept_user,
+                                           &wire_consumed);
     if (wst != MCL_WIRE_OK) {
         return MCL_SDK_ERR_WIRE_FAILURE;
     }
@@ -534,6 +704,7 @@ mcl_sdk_status_t mcl_node_send_handoff(
     size_t control_written = 0u;
     size_t frame_written = 0u;
     int32_t tx_res;
+    uint8_t transport = 0u;
 
     if (node == NULL || control == NULL || scratch == NULL ||
         scratch_capacity == 0u) {
@@ -541,6 +712,40 @@ mcl_sdk_status_t mcl_node_send_handoff(
     }
     if (node->tx_fn == NULL) {
         return MCL_SDK_ERR_TX_UNAVAILABLE;
+    }
+    if (mcl_node_link_permits_migration(node) == 0) {
+        /* The one place the two state machines cross, enforced here rather
+         * than assumed. See the ownership note in sdk.h. */
+        return MCL_SDK_ERR_INVALID_STATE;
+    }
+
+    /*
+     * MANDATORY, not recommended. A post-acceptance control arrives on the
+     * candidate transport, which the contact has not been using, so a receiver
+     * holding several contacts must route it before it can parse a
+     * class-specific payload -- and the only routing field it can use is the
+     * outer session reference.
+     */
+    if ((flags & MCL_LINK_FLAG_SESSION) == 0u) {
+        return MCL_SDK_ERR_INVALID_ARGUMENT;
+    }
+
+    /*
+     * The bearer is chosen from the contact, never passed in. A handoff control
+     * sent on the wrong medium proves nothing about the medium it claims to be
+     * establishing.
+     */
+    lst = mcl_contact_control_transport(&node->contact, &transport);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_INVALID_STATE;
+    }
+
+    if (control->operation == MCL_HANDOFF_OP_COMMIT &&
+        node->contact.state != MCL_CONTACT_STATE_VALIDATED &&
+        node->contact.state != MCL_CONTACT_STATE_COMMITTING) {
+        /* Committing an unvalidated path is the defect the contact state
+         * machine exists to prevent; refused before anything is encoded. */
+        return MCL_SDK_ERR_INVALID_STATE;
     }
 
     lst = mcl_handoff_control_encode(control, control_buf, sizeof(control_buf),
@@ -559,22 +764,21 @@ mcl_sdk_status_t mcl_node_send_handoff(
     frame.payload = control_buf;
     frame.payload_len = (uint16_t)control_written;
 
-    if ((flags & MCL_LINK_FLAG_SESSION) != 0u) {
-        /*
-         * The frame's session reference must be the control's own. A frame that
-         * contradicted its payload would leave a receiver with two answers to
-         * "which contact is this", and the recommended redundancy check in
-         * link-handoff-control-v0.1.md section 3 would fail against frames this
-         * implementation itself produced.
-         */
-        if (node->contact.session_valid == 0u) {
-            return MCL_SDK_ERR_INVALID_STATE;
-        }
-        if (node->contact.session_ref != control->session_ref) {
-            return MCL_SDK_ERR_INVALID_STATE;
-        }
-        frame.session_ref = control->session_ref;
+    /*
+     * The frame's session reference must be the control's own. A frame that
+     * contradicted its payload would leave a receiver with two answers to
+     * "which contact is this", and the redundancy check in
+     * link-handoff-control-v0.1.md section 3 would fail against frames this
+     * implementation itself produced.
+     */
+    if (node->contact.session_valid == 0u) {
+        return MCL_SDK_ERR_INVALID_STATE;
     }
+    if (node->contact.session_ref != control->session_ref) {
+        return MCL_SDK_ERR_INVALID_STATE;
+    }
+    frame.session_ref = control->session_ref;
+
     if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
         frame.sequence = node->tx_sequence;
     }
@@ -585,14 +789,40 @@ mcl_sdk_status_t mcl_node_send_handoff(
         return MCL_SDK_ERR_FRAME_FAILURE;
     }
 
-    tx_res = node->tx_fn(node->user_ctx, scratch, frame_written);
-    if (tx_res != 0) {
-        return MCL_SDK_ERR_TX_FAILURE;
+    tx_res = node->tx_fn(node->user_ctx, transport, scratch, frame_written);
+
+    if (mcl_node_tx_possibly_sent(tx_res) != 0) {
+        if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
+            node->tx_sequence = (uint16_t)(node->tx_sequence + 1u);
+        }
+        /*
+         * THE COMMIT BOUNDARY.
+         *
+         * Sending COMMIT is irrevocable, so this transition belongs to the
+         * transmission and not to a separate call the caller makes beforehand.
+         * It happens for a frame that was accepted AND for one whose fate the
+         * transport could not report, because in the second case the peer may
+         * hold it -- and once it might, rolling back is a claim this machine
+         * cannot make.
+         *
+         * It does NOT happen when the transport is certain nothing left, which
+         * is the case that would otherwise strand a contact irrevocably in
+         * COMMITTING over a frame nobody ever saw.
+         *
+         * Retransmission is a no-op here: the contact is already COMMITTING,
+         * and re-sending is exactly what a peer in that state is supposed to do.
+         */
+        if (control->operation == MCL_HANDOFF_OP_COMMIT &&
+            node->contact.state == MCL_CONTACT_STATE_VALIDATED) {
+            lst = mcl_contact_commit_begin(&node->contact);
+            if (lst != MCL_LINK_OK) {
+                return MCL_SDK_ERR_LINK_FAILURE;
+            }
+        }
     }
 
-    /* Advance only after the transport accepted the frame. */
-    if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
-        node->tx_sequence = (uint16_t)(node->tx_sequence + 1u);
+    if (tx_res != 0) {
+        return mcl_node_tx_status(tx_res);
     }
     if (bytes_sent != NULL) {
         *bytes_sent = frame_written;
@@ -603,6 +833,7 @@ mcl_sdk_status_t mcl_node_send_handoff(
 
 mcl_sdk_status_t mcl_node_receive_handoff(
     mcl_node_t *node,
+    uint8_t arrival_transport,
     const uint8_t *data,
     size_t data_size,
     mcl_link_frame_t *frame,
@@ -610,10 +841,30 @@ mcl_sdk_status_t mcl_node_receive_handoff(
     size_t *consumed)
 {
     mcl_link_status_t lst;
+    uint8_t expected_transport = 0u;
 
     if (node == NULL || data == NULL || frame == NULL || control == NULL ||
         consumed == NULL) {
         return MCL_SDK_ERR_INVALID_ARGUMENT;
+    }
+
+    /*
+     * THE CHECK PATH VALIDATION DEPENDS ON.
+     *
+     * A handoff control is admissible only on the transport the current
+     * transaction is being conducted over -- the candidate while a migration is
+     * in progress, the active transport otherwise. Without it a PATH_RESPONSE
+     * delivered from the OLD path would validate a candidate that had never
+     * carried a byte, which is the only thing the challenge/response exchange
+     * exists to establish. Nothing else in the sequence can detect that: every
+     * reference in the control would be correct.
+     */
+    lst = mcl_contact_control_transport(&node->contact, &expected_transport);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_INVALID_STATE;
+    }
+    if (arrival_transport != expected_transport) {
+        return MCL_SDK_ERR_WRONG_TRANSPORT;
     }
 
     lst = mcl_link_frame_decode(data, data_size, frame, consumed);
@@ -632,6 +883,19 @@ mcl_sdk_status_t mcl_node_receive_handoff(
     if (frame->payload == NULL) {
         return MCL_SDK_ERR_FRAME_FAILURE;
     }
+    if (mcl_node_frame_addressed_elsewhere(node, frame) != 0) {
+        return MCL_SDK_NOT_ADDRESSED;
+    }
+    if ((frame->flags & MCL_LINK_FLAG_SESSION) == 0u) {
+        /*
+         * Required, not merely checked when present. A post-acceptance handoff
+         * frame without a session reference cannot be routed to a contact by a
+         * machine holding more than one, and accepting it here would mean the
+         * routing field a multi-contact receiver depends on could simply be
+         * absent from a frame this implementation accepts.
+         */
+        return MCL_SDK_ERR_FRAME_FAILURE;
+    }
 
     /*
      * payload_len is an exact boundary. The control decoder enforces it, which
@@ -643,12 +907,11 @@ mcl_sdk_status_t mcl_node_receive_handoff(
         return MCL_SDK_ERR_LINK_FAILURE;
     }
 
-    if ((frame->flags & MCL_LINK_FLAG_SESSION) != 0u &&
-        frame->session_ref != control->session_ref) {
+    if (frame->session_ref != control->session_ref) {
         /*
-         * The optional redundancy of link-handoff-control-v0.1.md section 3. A
-         * frame that disagrees with its own payload is rejected: there is no
-         * correct way to choose which of the two is meant.
+         * link-handoff-control-v0.1.md section 3. A frame that disagrees with
+         * its own payload is rejected: there is no correct way to choose which
+         * of the two is meant.
          */
         return MCL_SDK_ERR_FRAME_FAILURE;
     }
@@ -663,15 +926,43 @@ mcl_sdk_status_t mcl_node_apply_handoff(
 {
     mcl_link_status_t lst;
     uint8_t reconfirm = 0u;
+    uint8_t reecho = 0u;
 
     if (node == NULL || control == NULL || action == NULL) {
         return MCL_SDK_ERR_INVALID_ARGUMENT;
+    }
+    if (mcl_node_link_permits_migration(node) == 0) {
+        return MCL_SDK_ERR_INVALID_STATE;
     }
 
     *action = MCL_HANDOFF_ACTION_NONE;
 
     switch (control->operation) {
     case MCL_HANDOFF_OP_PATH_CHALLENGE:
+        if (node->contact.state == MCL_CONTACT_STATE_VALIDATED) {
+            /*
+             * A retransmitted challenge, because this peer's PATH_RESPONSE was
+             * lost. It must be answered again: the peer is doing the only thing
+             * available to it, and refusing would end a migration over one
+             * dropped frame with both sides behaving correctly.
+             *
+             * Only an IDENTICAL challenge is re-echoed. A different one under
+             * the same transaction is answered with silence -- an honest
+             * retransmission repeats itself.
+             */
+            lst = mcl_contact_challenge_repeat(&node->contact,
+                                               control->migration_ref,
+                                               control->session_ref,
+                                               control->challenge, &reecho);
+            if (lst != MCL_LINK_OK) {
+                return MCL_SDK_ERR_LINK_FAILURE;
+            }
+            if (reecho == 0u) {
+                return MCL_SDK_ERR_INVALID_STATE;
+            }
+            *action = MCL_HANDOFF_ACTION_SEND_PATH_RESPONSE;
+            return MCL_SDK_OK;
+        }
         if (node->contact.state != MCL_CONTACT_STATE_AGREED) {
             return MCL_SDK_ERR_INVALID_STATE;
         }
@@ -701,6 +992,11 @@ mcl_sdk_status_t mcl_node_apply_handoff(
         return MCL_SDK_OK;
 
     case MCL_HANDOFF_OP_PATH_RESPONSE:
+        /*
+         * From VALIDATING this completes validation; from VALIDATED it is a
+         * duplicate and changes nothing. The path is already proven, and
+         * proving it again is not a failure of anything.
+         */
         lst = mcl_contact_validation_response(&node->contact,
                                               control->migration_ref,
                                               control->session_ref,
@@ -751,6 +1047,12 @@ mcl_sdk_status_t mcl_node_apply_handoff(
         return MCL_SDK_OK;
 
     case MCL_HANDOFF_OP_CONFIRM:
+        /*
+         * From COMMITTING this completes the move; from ACTIVE it is a
+         * duplicate of the confirmation that already completed it, and changes
+         * nothing. mcl_contact_commit_confirm handles both and refuses a
+         * CONFIRM from ACTIVE that names any other transaction.
+         */
         lst = mcl_contact_commit_confirm(&node->contact,
                                          control->migration_ref,
                                          control->session_ref);

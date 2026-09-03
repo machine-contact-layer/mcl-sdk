@@ -14,9 +14,12 @@ typedef struct {
     size_t size;
 } pipe_transport_t;
 
-static int32_t pipe_tx(void *user, const uint8_t *data, size_t data_size)
+static int32_t pipe_tx(void *user, uint8_t transport_id,
+                          const uint8_t *data, size_t data_size)
 {
     pipe_transport_t *p = (pipe_transport_t *)user;
+
+    (void)transport_id;
     if (data_size > sizeof(p->buffer)) {
         return -1;
     }

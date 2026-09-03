@@ -24,24 +24,83 @@ enum {
     MCL_SDK_ERR_TX_UNAVAILABLE = 5,
     MCL_SDK_ERR_TX_FAILURE = 6,
     MCL_SDK_ERR_FRAME_FAILURE = 7,
-    MCL_SDK_ERR_INVALID_STATE = 8
+    MCL_SDK_ERR_INVALID_STATE = 8,
+    /*
+     * The transport stated definitely that nothing was transmitted. Distinct
+     * from MCL_SDK_ERR_TX_UNCERTAIN because the two demand opposite handling
+     * of an irrevocable step; see the tx callback contract below.
+     */
+    MCL_SDK_ERR_TX_NOT_SENT = 9,
+    /*
+     * The transport could not say whether the bytes left. Any state change the
+     * transmission implies HAS been made, because the peer may have received
+     * it. The caller should retransmit -- every control in this SDK is
+     * idempotent for exactly this case.
+     */
+    MCL_SDK_ERR_TX_UNCERTAIN = 10,
+    /* Bytes arrived on a transport where this frame is not admissible. */
+    MCL_SDK_ERR_WRONG_TRANSPORT = 11,
+    /*
+     * Ordinary traffic is suspended for this contact. Not an error in the
+     * contact: a transport cutover is in progress and neither medium can be
+     * used for data until it completes. See mcl_contact_data_transport.
+     */
+    MCL_SDK_ERR_QUIESCED = 12,
+    /*
+     * The frame decoded correctly and is addressed to another node. Not an
+     * error: on a shared bearer, hearing frames for other machines is normal.
+     */
+    MCL_SDK_NOT_ADDRESSED = 13
 };
 
 /*
  * Low-level transport transmission callback.
  *
  * Contract:
- * - user: Caller-provided opaque context passed at node initialization.
- * - data: Pointer to canonical Wire-encoded bytes.
- *         NOTE: This is NOT a normative MCL Link binary frame; it is raw canonical
- *         Wire payload bytes delivered directly to the physical/bearer transport layer.
- * - data_size: Exact length of the canonical Wire encoding.
+ * - user:         caller-provided opaque context passed at node initialization.
+ * - transport_id: which bearer these bytes MUST leave on, from the
+ *                 transport-id registry in mcl/contact.h.
+ * - data:         the exact bytes to transmit.
+ * - data_size:    their length.
  *
- * Returns:
- * 0 on success, or non-zero transport-specific error code (mapped to MCL_SDK_ERR_TX_FAILURE).
+ * WHY THE TRANSPORT IS A PARAMETER
+ *
+ * An earlier revision had none, and a node therefore had exactly one way out.
+ * That cannot express a migration, which is the one thing this layer exists to
+ * do. During a migration a contact spans two media at once:
+ *
+ *     TRANSPORT_OFFER / ACCEPT        old transport
+ *     PATH_CHALLENGE / PATH_RESPONSE  candidate transport
+ *     COMMIT / CONFIRM                candidate transport
+ *     ordinary traffic                depends on the cutover state
+ *
+ * With one callback and no transport argument, an integrator had to infer which
+ * socket, characteristic or speaker each call meant from the order of calls --
+ * which is to say, the SDK documented the requirement and then made it the
+ * caller's problem to guess. Now the SDK derives it from the contact state and
+ * says so on every call.
+ *
+ * WHAT THE RETURN VALUE MEANS
+ *
+ *      0   accepted for transmission.
+ *    < 0   DEFINITELY not transmitted. Nothing left this machine.
+ *    > 0   outcome UNKNOWN. It may or may not have left.
+ *
+ * The three-way return exists because of COMMIT. Committing a migration is
+ * irrevocable once the bytes are transmitted, so the SDK must not enter that
+ * state for a frame the transport is certain it never sent -- and must enter it
+ * for one the transport cannot vouch for, because the peer may have it.
+ * Collapsing "not sent" and "unknown" into one failure forces a choice between
+ * a contact stuck irrevocably on nothing, and a rollback after a commit the
+ * peer may have acted on. Real bearers distinguish these: a full transmit queue
+ * is a definite refusal, a BLE notification with no completion event is not.
+ *
+ * A transport that genuinely cannot tell the difference MUST return > 0.
+ * Claiming certainty it does not have is the failure this parameter prevents.
  */
 typedef int32_t (*mcl_sdk_tx_fn)(
     void *user,
+    uint8_t transport_id,
     const uint8_t *data,
     size_t data_size);
 
@@ -64,6 +123,40 @@ typedef struct {
     /* Ordering role for migration negotiation. Confers no authority. */
     mcl_contact_role_t role;
 } mcl_node_config_t;
+
+/* ============================================================
+ * WHO OWNS WHAT: LINK LIFECYCLE VERSUS CONTACT CONTINUITY
+ *
+ * A node holds two state machines, and they answer different questions:
+ *
+ *   mcl_link_t     the protocol lifecycle. Have we discovered a peer,
+ *                  exchanged capabilities, negotiated, established?
+ *   mcl_contact_t  transport continuity. Which medium carries this contact,
+ *                  and is a change of medium under way?
+ *
+ * NEITHER IMPLIES THE OTHER, and neither is derived from the other. A machine
+ * can be settled on a transport having negotiated nothing; it can be
+ * mid-negotiation with no migration in sight. An earlier revision provided
+ * mcl_contact_link_state(), which claimed a mapping between them; it has been
+ * removed, because a function reporting what one machine "ought" to look like,
+ * beside a second machine that is independently mutable, is a third source of
+ * truth that drifts from both.
+ *
+ * They cross in exactly ONE place, and the SDK owns it:
+ *
+ *   A migration may only be DRIVEN while the link lifecycle is ESTABLISHED or
+ *   HANDOFF, and the link may not leave those states while a migration is in
+ *   progress.
+ *
+ * The SDK enforces both halves: mcl_node_send_handoff and
+ * mcl_node_apply_handoff refuse to act outside those states, and
+ * mcl_node_link_transition refuses to leave them with a transaction
+ * outstanding. Sending and receiving ordinary frames is NOT gated on the
+ * lifecycle -- first contact necessarily happens before establishment, and a
+ * layer whose first frame required an established session could never send one.
+ *
+ * Recorded in mcl-link/spec/link-contact-ownership-v0.1.md.
+ * ============================================================ */
 
 /*
  * One node currently tracks one contact, mirroring the single mcl_link_t it
@@ -127,6 +220,16 @@ mcl_sdk_status_t mcl_node_receive_tier0(
  * `scratch` holds the Wire encoding and then the finished frame, so it must be
  * large enough for both. `flags` selects the optional Link frame fields; the
  * sequence is maintained by the node when MCL_LINK_FLAG_SEQUENCE is set.
+ *
+ * The frame goes out on mcl_contact_data_transport(). While that reports the
+ * contact QUIESCED -- between the transmission of COMMIT and the arrival of
+ * CONFIRM -- this returns MCL_SDK_ERR_QUIESCED and sends nothing. In that
+ * window the peer may already have left the transport this node still considers
+ * active, and this node cannot find out until the CONFIRM it is waiting for.
+ * Transmitting anyway would put ordinary traffic onto a medium believed,
+ * without evidence, still to be carrying the contact. The window is bounded by
+ * the CONFIRM exchange; handoff controls are unaffected, since completing that
+ * exchange is what ends it.
  */
 mcl_sdk_status_t mcl_node_send_framed_tier0(
     mcl_node_t *node,
@@ -155,10 +258,23 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
  * machine, and an AUTHORITY_CLAIM arriving in a frame does not become
  * authority by being received.
  *
+ * `arrival_transport` is where the bytes came in. A frame arriving on a
+ * transport that is neither this contact's active one nor its candidate is
+ * refused with MCL_SDK_ERR_WRONG_TRANSPORT: the contact is not there, and
+ * accepting it would let any bearer the process happens to have open inject
+ * frames into a contact established somewhere else.
+ *
+ * A frame carrying MCL_LINK_FLAG_DESTINATION whose destination_ref is not this
+ * node's returns MCL_SDK_NOT_ADDRESSED, with the frame still decoded. That is
+ * not an error -- on a shared bearer, hearing traffic for other machines is the
+ * normal case -- but the SDK must not hand the caller a semantic object from a
+ * frame explicitly addressed elsewhere and leave the filtering to be remembered.
+ *
  * All pointer arguments except `object` are required.
  */
 mcl_sdk_status_t mcl_node_receive_framed(
     mcl_node_t *node,
+    uint8_t arrival_transport,
     const uint8_t *data,
     size_t data_size,
     mcl_link_frame_t *frame,
@@ -209,23 +325,25 @@ mcl_sdk_status_t mcl_node_send_framed_tier0_ext(
  * Decode a received Link frame and, when it carries a Tier-0 object, decode
  * that object and its extension block.
  *
- * `known` states which critical extension ids this caller implements; NULL
- * means none, and every critical extension then makes the object undecodable.
- * `reader` is positioned at the extension block on success and borrows from
- * `data`, so it stays valid only as long as `data` does.
+ * `accept` decides which critical extensions this caller implements AND
+ * accepts, seeing each one's value; NULL means none, and every critical
+ * extension then makes the object undecodable. `reader` is positioned at the
+ * extension block on success and borrows from `data`, so it stays valid only as
+ * long as `data` does.
  *
  * As with mcl_node_receive_framed, this changes no link state. A received frame
  * is information for local policy, never an instruction.
  */
 mcl_sdk_status_t mcl_node_receive_framed_ext(
     mcl_node_t *node,
+    uint8_t arrival_transport,
     const uint8_t *data,
     size_t data_size,
     mcl_link_frame_t *frame,
     mcl_wire_tier0_t *object,
     mcl_wire_extension_reader_t *reader,
-    mcl_wire_extension_known_fn known,
-    void *known_user,
+    mcl_wire_extension_accept_fn accept,
+    void *accept_user,
     uint8_t *has_object,
     size_t *consumed);
 
@@ -247,10 +365,10 @@ mcl_sdk_status_t mcl_node_receive_framed_ext(
 /*
  * What the caller should send in response to a control it has applied.
  *
- * The library does not send it: transmitting requires knowing which transport
- * to use, and during a migration the candidate and the current transport are
- * different. Only the caller knows which socket, characteristic or speaker the
- * reply belongs on.
+ * The library decides WHAT to send and on WHICH transport
+ * (mcl_contact_control_transport); the caller performs the transmission,
+ * because applying a control and answering it are separate decisions and
+ * charter 2.10.1 puts the interaction sequence in the deployment's hands.
  */
 typedef uint8_t mcl_handoff_action_t;
 enum {
@@ -263,11 +381,42 @@ enum {
  * Send a handoff control inside a HANDOFF Link frame.
  *
  * `flags` selects the optional Link frame fields as for
- * mcl_node_send_framed_tier0. MCL_LINK_FLAG_SESSION is recommended and, when
- * set, must carry the same session_ref the control does; this function enforces
- * that rather than letting a frame contradict its own payload.
+ * mcl_node_send_framed_tier0. MCL_LINK_FLAG_SESSION is REQUIRED -- see below --
+ * and its session_ref must equal the control's; this function enforces both
+ * rather than letting a frame contradict, or fail to name, its own payload.
  *
  * `scratch` must hold the encoded frame.
+ *
+ * THE SESSION FLAG IS MANDATORY
+ *
+ * All four handoff controls are post-acceptance: they exist only after an
+ * acceptance bound a session reference. They arrive on the CANDIDATE transport,
+ * which the contact has not been using, so a machine holding several contacts
+ * must decide which contact a freshly arrived frame belongs to BEFORE parsing a
+ * class-specific payload. The Link header already carries that routing field.
+ * Requiring it costs four bytes on frames of 10 or 18 payload bytes, on a
+ * transport just chosen for being better than the one where bytes were scarce.
+ *
+ * An earlier revision made it a recommendation and checked it only when
+ * present, which meant the routing field a multi-contact receiver depends on
+ * could simply be absent.
+ *
+ * THE TRANSPORT IS CHOSEN, NOT PASSED
+ *
+ * The frame goes out on mcl_contact_control_transport() -- the candidate while
+ * a migration is in progress, the active transport otherwise, which is where a
+ * COMMIT retransmitted after completion belongs. The caller cannot override it:
+ * a handoff control sent on the wrong medium proves nothing about the medium it
+ * claims to be establishing.
+ *
+ * COMMIT IS SPECIAL, AND THIS FUNCTION OWNS THE TRANSITION
+ *
+ * Sending COMMIT is irrevocable, so the state change must be tied to the
+ * transmission rather than made before it by the caller. This function performs
+ * both: it transmits, and then enters COMMITTING unless the transport reported
+ * that nothing was sent. Doing it the other way round -- caller calls
+ * mcl_contact_commit_begin(), then asks the SDK to transmit -- can strand a
+ * contact irrevocably in COMMITTING over a frame that was never sent.
  */
 mcl_sdk_status_t mcl_node_send_handoff(
     mcl_node_t *node,
@@ -289,12 +438,23 @@ mcl_sdk_status_t mcl_node_send_handoff(
  * The frame's payload_len is an exact boundary. A control that does not fill it
  * is rejected rather than partially accepted.
  *
+ * `arrival_transport` is where the bytes actually came in, and it is CHECKED:
+ * a control is refused unless it arrived on mcl_contact_control_transport().
+ * Without this argument the SDK could not perform the one check path validation
+ * depends on. A PATH_RESPONSE fed in from the old path would otherwise validate
+ * a candidate that had never carried a single byte -- which is precisely, and
+ * only, what PATH_CHALLENGE/PATH_RESPONSE exist to establish.
+ *
+ * MCL_LINK_FLAG_SESSION is required and its session_ref must equal the
+ * control's. A frame lacking it is refused, not merely unchecked.
+ *
  * This changes no state whatever -- not the contact, not the link, not the
  * sequence. Nothing about receiving these bytes commits this machine to
  * anything; see mcl_node_apply_handoff.
  */
 mcl_sdk_status_t mcl_node_receive_handoff(
     mcl_node_t *node,
+    uint8_t arrival_transport,
     const uint8_t *data,
     size_t data_size,
     mcl_link_frame_t *frame,
@@ -310,10 +470,22 @@ mcl_sdk_status_t mcl_node_receive_handoff(
  * wrong.
  *
  *   PATH_CHALLENGE in AGREED       -> validated locally; send PATH_RESPONSE
+ *   PATH_CHALLENGE in VALIDATED    -> duplicate; send PATH_RESPONSE, no change
  *   PATH_RESPONSE  in VALIDATING   -> VALIDATED
+ *   PATH_RESPONSE  in VALIDATED    -> duplicate; no change
  *   COMMIT         in VALIDATED    -> ACTIVE on the candidate; send CONFIRM
- *   COMMIT         in ACTIVE       -> retransmission; send CONFIRM, no change
+ *   COMMIT         in ACTIVE       -> duplicate; send CONFIRM, no change
  *   CONFIRM        in COMMITTING   -> ACTIVE on the candidate
+ *   CONFIRM        in ACTIVE       -> duplicate; no change
+ *
+ * EVERY ROW HAS A DUPLICATE ROW, AND THAT IS THE POINT.
+ *
+ * On a lossy medium the only repair is retransmission, so each control must be
+ * answerable a second time with the same outcome. The duplicate PATH_CHALLENGE
+ * row is the one that was missing and that a radio would have found: B echoes a
+ * challenge, its response is lost, A correctly retransmits -- and B, no longer
+ * in AGREED, refused it. One dropped frame killed a migration with both peers
+ * behaving correctly.
  *
  * Applying a COMMIT goes straight from VALIDATED to ACTIVE and never enters
  * COMMITTING. That state is reserved for the peer that SENT a commit and does

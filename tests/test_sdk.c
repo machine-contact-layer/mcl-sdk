@@ -28,9 +28,12 @@ typedef struct {
     size_t call_count;
 } memory_transport_t;
 
-static int32_t memory_tx_callback(void *user, const uint8_t *data, size_t data_size)
+static int32_t memory_tx_callback(void *user, uint8_t transport_id,
+                          const uint8_t *data, size_t data_size)
 {
     memory_transport_t *tx = (memory_transport_t *)user;
+
+    (void)transport_id;
     if (tx == NULL) {
         return -1;
     }
@@ -318,7 +321,7 @@ static void test_negative_cases(void)
 
     /* 5. TX callback failure */
     transport.fail_next = 1;
-    CHECK_SDK_STATUS(mcl_node_send_tier0(&node, &obj, scratch, sizeof(scratch), &written), MCL_SDK_ERR_TX_FAILURE);
+    CHECK_SDK_STATUS(mcl_node_send_tier0(&node, &obj, scratch, sizeof(scratch), &written), MCL_SDK_ERR_TX_NOT_SENT);
 
     /* 6. NULL receive arguments */
     CHECK_SDK_STATUS(mcl_node_receive_tier0(NULL, scratch, 10u, &obj, &consumed), MCL_SDK_ERR_INVALID_ARGUMENT);

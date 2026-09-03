@@ -11,6 +11,13 @@
 #include <stdio.h>
 #include <string.h>
 
+/*
+ * The bearer every node in this file is configured on. Receiving is now
+ * transport-aware: a frame arriving on a transport the contact does not live
+ * on is refused, so the tests must say where their bytes came from.
+ */
+#define TEST_TRANSPORT MCL_CONTACT_TRANSPORT_AP
+
 static int tests_run = 0;
 static int tests_failed = 0;
 
@@ -30,10 +37,13 @@ typedef struct {
     int32_t result;
 } capture_tx_t;
 
-static int32_t capture_tx(void *user, const uint8_t *data, size_t data_size)
+static int32_t capture_tx(void *user, uint8_t transport_id,
+                          const uint8_t *data, size_t data_size)
 {
     capture_tx_t *c = (capture_tx_t *)user;
     size_t i;
+
+    (void)transport_id;
 
     c->calls++;
     if (c->result != 0) {
@@ -53,9 +63,19 @@ static int32_t capture_tx(void *user, const uint8_t *data, size_t data_size)
  * The SDK can carry extensions end to end, and the non-extension receive path
  * still refuses an extended object rather than dropping its extensions.
  */
-static uint8_t sdk_knows_id(void *user, uint32_t extension_id)
+static uint8_t sdk_accepts_id(void *user, uint32_t extension_id,
+                              const uint8_t *value, size_t value_size)
 {
-    return (extension_id == *(const uint32_t *)user) ? 1u : 0u;
+    /*
+     * The callback sees the value, not only the id. CRITICAL means the object
+     * must not be acted on unless this extension is understood, and
+     * understanding one means understanding its contents -- so a caller that
+     * recognises the id but cannot use the value must be able to say no.
+     */
+    if (extension_id != *(const uint32_t *)user) {
+        return 0u;
+    }
+    return (value != NULL && value_size == 3u) ? 1u : 0u;
 }
 
 static void test_framed_extensions_round_trip(void);
@@ -112,7 +132,7 @@ static void test_framed_round_trip(void)
     CHECK(cap.calls == 1u, "transport called once");
     CHECK(cap.size == sent, "transport received the whole frame");
 
-    CHECK(mcl_node_receive_framed(&rx_node, cap.buffer, cap.size, &frame,
+    CHECK(mcl_node_receive_framed(&rx_node, TEST_TRANSPORT, cap.buffer, cap.size, &frame,
                                   &decoded, &has_object, &consumed) == MCL_SDK_OK,
           "framed receive");
     CHECK(consumed == cap.size, "consumed the whole frame");
@@ -148,27 +168,44 @@ static void test_sequence_advances_only_on_success(void)
                                          MCL_LINK_FLAG_SEQUENCE,
                                          scratch, sizeof(scratch), &sent) == MCL_SDK_OK,
               "send with sequence");
-        CHECK(mcl_node_receive_framed(&node, cap.buffer, cap.size, &frame,
+        CHECK(mcl_node_receive_framed(&node, TEST_TRANSPORT, cap.buffer, cap.size, &frame,
                                       &decoded, &has_object, &consumed) == MCL_SDK_OK,
               "receive back");
         CHECK(frame.sequence == (uint16_t)i, "sequence increments per frame");
     }
 
-    /* A transport failure must not consume a sequence number. */
+    /*
+     * A DEFINITE transport failure must not consume a sequence number: nothing
+     * left this machine, so no ordinal has been spent.
+     */
     cap.result = -7;
     CHECK(mcl_node_send_framed_tier0(&node, &obj, MCL_LINK_CLASS_DATA,
                                      MCL_LINK_FLAG_SEQUENCE,
                                      scratch, sizeof(scratch), &sent)
-              == MCL_SDK_ERR_TX_FAILURE,
-          "transport failure reported");
-    CHECK(node.tx_sequence == 3u, "sequence not advanced on failure");
+              == MCL_SDK_ERR_TX_NOT_SENT,
+          "a definite transport failure is reported as not sent");
+    CHECK(node.tx_sequence == 3u, "sequence not advanced on definite failure");
+
+    /*
+     * An UNCERTAIN outcome must consume one. The frame may be in the peer's
+     * hands, and reusing its ordinal would give two different frames one name
+     * -- which is precisely the confusion that made a lost datagram look like a
+     * 36% protocol failure rate in the mcl-ip harness.
+     */
+    cap.result = 5;
+    CHECK(mcl_node_send_framed_tier0(&node, &obj, MCL_LINK_CLASS_DATA,
+                                     MCL_LINK_FLAG_SEQUENCE,
+                                     scratch, sizeof(scratch), &sent)
+              == MCL_SDK_ERR_TX_UNCERTAIN,
+          "an uncertain outcome is reported distinctly");
+    CHECK(node.tx_sequence == 4u, "and it DOES consume a sequence number");
 
     cap.result = 0;
     CHECK(mcl_node_send_framed_tier0(&node, &obj, MCL_LINK_CLASS_DATA,
                                      MCL_LINK_FLAG_SEQUENCE,
                                      scratch, sizeof(scratch), &sent) == MCL_SDK_OK,
           "send succeeds after recovery");
-    CHECK(node.tx_sequence == 4u, "sequence resumes without a gap");
+    CHECK(node.tx_sequence == 5u, "sequence resumes without a gap");
 }
 
 static void test_session_flag_requires_context(void)
@@ -248,7 +285,7 @@ static void test_session_flag_requires_context(void)
         mcl_wire_tier0_t decoded;
         uint8_t has_object = 0u;
         size_t consumed = 0u;
-        CHECK(mcl_node_receive_framed(&node, cap.buffer, cap.size, &frame,
+        CHECK(mcl_node_receive_framed(&node, TEST_TRANSPORT, cap.buffer, cap.size, &frame,
                                       &decoded, &has_object, &consumed) == MCL_SDK_OK,
               "receive session frame");
         CHECK(frame.session_ref == UINT32_C(0x5E5510C7),
@@ -284,7 +321,7 @@ static void test_receive_has_no_side_effects(void)
           "send authority claim");
 
     state_before = mcl_node_get_link_const(&node)->state;
-    CHECK(mcl_node_receive_framed(&node, cap.buffer, cap.size, &frame,
+    CHECK(mcl_node_receive_framed(&node, TEST_TRANSPORT, cap.buffer, cap.size, &frame,
                                   &decoded, &has_object, &consumed) == MCL_SDK_OK,
           "receive authority claim");
     CHECK(has_object == 1u, "claim decoded as an object");
@@ -319,7 +356,7 @@ static void test_non_semantic_classes_are_not_decoded(void)
     CHECK(mcl_node_send_framed_tier0(&node, &obj, MCL_LINK_CLASS_KEEPALIVE,
                                      0u, scratch, sizeof(scratch), &sent) == MCL_SDK_OK,
           "send keepalive");
-    CHECK(mcl_node_receive_framed(&node, cap.buffer, cap.size, &frame,
+    CHECK(mcl_node_receive_framed(&node, TEST_TRANSPORT, cap.buffer, cap.size, &frame,
                                   &decoded, &has_object, &consumed) == MCL_SDK_OK,
           "receive keepalive");
     CHECK(has_object == 0u,
@@ -351,7 +388,7 @@ static void test_malformed_frame_never_reaches_wire(void)
         memcpy(corrupt, cap.buffer, cap.size);
         corrupt[i] ^= 0x01u;
         has_object = 1u;
-        if (mcl_node_receive_framed(&node, corrupt, cap.size, &frame,
+        if (mcl_node_receive_framed(&node, TEST_TRANSPORT, corrupt, cap.size, &frame,
                                     &decoded, &has_object, &consumed) != MCL_SDK_OK) {
             CHECK(has_object == 0u, "no object reported on a rejected frame");
         }
@@ -359,7 +396,7 @@ static void test_malformed_frame_never_reaches_wire(void)
 
     /* Truncation at every length. */
     for (i = 0u; i < cap.size; ++i) {
-        CHECK(mcl_node_receive_framed(&node, cap.buffer, i, &frame,
+        CHECK(mcl_node_receive_framed(&node, TEST_TRANSPORT, cap.buffer, i, &frame,
                                       &decoded, &has_object, &consumed)
                   == MCL_SDK_ERR_FRAME_FAILURE,
               "truncated frame rejected");
@@ -393,10 +430,10 @@ static void test_argument_validation(void)
     CHECK(mcl_node_send_framed_tier0(&node, &obj, (mcl_link_frame_class_t)15u, 0u,
                                      scratch, sizeof(scratch), &sent)
               == MCL_SDK_ERR_FRAME_FAILURE, "unassigned frame class refused");
-    CHECK(mcl_node_receive_framed(NULL, scratch, 8u, &frame, &decoded,
+    CHECK(mcl_node_receive_framed(NULL, TEST_TRANSPORT, scratch, 8u, &frame, &decoded,
                                   &has_object, &consumed)
               == MCL_SDK_ERR_INVALID_ARGUMENT, "null node on receive");
-    CHECK(mcl_node_receive_framed(&node, NULL, 8u, &frame, &decoded,
+    CHECK(mcl_node_receive_framed(&node, TEST_TRANSPORT, NULL, 8u, &frame, &decoded,
                                   &has_object, &consumed)
               == MCL_SDK_ERR_INVALID_ARGUMENT, "null data on receive");
 
@@ -467,7 +504,7 @@ static void test_payload_boundary_must_be_exact(void)
     CHECK(mcl_link_frame_encode(&frame, raw, sizeof(raw), &written) == MCL_LINK_OK,
           "over-long payload still forms a valid frame");
 
-    CHECK(mcl_node_receive_framed(&rx_node, raw, written, &frame, &decoded,
+    CHECK(mcl_node_receive_framed(&rx_node, TEST_TRANSPORT, raw, written, &frame, &decoded,
                                   &has_object, &consumed) == MCL_SDK_ERR_WIRE_FAILURE,
           "trailing bytes inside the payload are rejected");
     CHECK(has_object == 0u, "no object is reported for a rejected payload");
@@ -480,7 +517,7 @@ static void test_payload_boundary_must_be_exact(void)
     frame.payload_len = (uint16_t)wire_written;
     CHECK(mcl_link_frame_encode(&frame, raw, sizeof(raw), &written) == MCL_LINK_OK,
           "exact frame encodes");
-    CHECK(mcl_node_receive_framed(&rx_node, raw, written, &frame, &decoded,
+    CHECK(mcl_node_receive_framed(&rx_node, TEST_TRANSPORT, raw, written, &frame, &decoded,
                                   &has_object, &consumed) == MCL_SDK_OK,
           "the same object with an exact length decodes");
     CHECK(has_object == 1u, "object reported");
@@ -511,7 +548,7 @@ static void test_missing_consumed_is_an_argument_error(void)
     CHECK(mcl_node_init(&rx_node, &cfg) == MCL_SDK_OK, "init");
     memset(raw, 0, sizeof(raw));
 
-    CHECK(mcl_node_receive_framed(&rx_node, raw, sizeof(raw), &frame, &decoded,
+    CHECK(mcl_node_receive_framed(&rx_node, TEST_TRANSPORT, raw, sizeof(raw), &frame, &decoded,
                                   &has_object, NULL) == MCL_SDK_ERR_INVALID_ARGUMENT,
           "null consumed is an argument error, not a frame failure");
 }
@@ -552,7 +589,7 @@ static void test_framed_extensions_round_trip(void)
 
     /* The extension-unaware receive path must refuse it rather than decode the
      * body and drop an extension the sender marked as required. */
-    CHECK(mcl_node_receive_framed(&node, cap.buffer, cap.size, &frame,
+    CHECK(mcl_node_receive_framed(&node, TEST_TRANSPORT, cap.buffer, cap.size, &frame,
                                   &decoded, &has_object, &consumed) ==
           MCL_SDK_ERR_WIRE_FAILURE,
           "the non-extension path refuses an extended object");
@@ -560,16 +597,16 @@ static void test_framed_extensions_round_trip(void)
     /* A caller that does not know the id is in the same position. */
     {
         uint32_t other = 22u;
-        CHECK(mcl_node_receive_framed_ext(&node, cap.buffer, cap.size, &frame,
-                                          &decoded, &reader, sdk_knows_id,
+        CHECK(mcl_node_receive_framed_ext(&node, TEST_TRANSPORT, cap.buffer, cap.size, &frame,
+                                          &decoded, &reader, sdk_accepts_id,
                                           &other, &has_object, &consumed) ==
               MCL_SDK_ERR_WIRE_FAILURE,
               "an unknown critical extension refuses the object");
     }
 
     /* A caller that knows it gets the object and the extension. */
-    CHECK(mcl_node_receive_framed_ext(&node, cap.buffer, cap.size, &frame,
-                                      &decoded, &reader, sdk_knows_id,
+    CHECK(mcl_node_receive_framed_ext(&node, TEST_TRANSPORT, cap.buffer, cap.size, &frame,
+                                      &decoded, &reader, sdk_accepts_id,
                                       &known_id, &has_object, &consumed) ==
           MCL_SDK_OK, "a known critical extension decodes");
     CHECK(has_object == 1u, "the object was decoded");
