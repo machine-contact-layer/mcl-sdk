@@ -7,6 +7,7 @@
 #include "mcl/wire.h"
 #include "mcl/link.h"
 #include "mcl/contact.h"
+#include "mcl/handoff.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -163,6 +164,111 @@ mcl_sdk_status_t mcl_node_receive_framed(
     mcl_wire_tier0_t *object,
     uint8_t *has_object,
     size_t *consumed);
+
+/* ---------- Handoff control path ----------
+ *
+ * The migration controls defined in mcl/handoff.h, carried as the payload of a
+ * Link frame of class HANDOFF. This is what makes migration an on-wire protocol
+ * rather than a sequence of local function calls: a hardware run driven by
+ * direct calls to mcl_contact_* proves the radios work, not that two
+ * independent implementations could migrate.
+ *
+ * Sending, receiving and APPLYING are three separate steps on purpose.
+ * Receiving decodes and changes nothing; applying is an explicit call the
+ * caller makes after its own policy has decided to. Charter 2.10.1 puts the
+ * interaction sequence in the deployment's hands, and charter 2.3 forbids
+ * reception from becoming authority.
+ */
+
+/*
+ * What the caller should send in response to a control it has applied.
+ *
+ * The library does not send it: transmitting requires knowing which transport
+ * to use, and during a migration the candidate and the current transport are
+ * different. Only the caller knows which socket, characteristic or speaker the
+ * reply belongs on.
+ */
+typedef uint8_t mcl_handoff_action_t;
+enum {
+    MCL_HANDOFF_ACTION_NONE               = 0u,
+    MCL_HANDOFF_ACTION_SEND_PATH_RESPONSE = 1u,
+    MCL_HANDOFF_ACTION_SEND_CONFIRM       = 2u
+};
+
+/*
+ * Send a handoff control inside a HANDOFF Link frame.
+ *
+ * `flags` selects the optional Link frame fields as for
+ * mcl_node_send_framed_tier0. MCL_LINK_FLAG_SESSION is recommended and, when
+ * set, must carry the same session_ref the control does; this function enforces
+ * that rather than letting a frame contradict its own payload.
+ *
+ * `scratch` must hold the encoded frame.
+ */
+mcl_sdk_status_t mcl_node_send_handoff(
+    mcl_node_t *node,
+    const mcl_handoff_control_t *control,
+    uint8_t flags,
+    uint8_t *scratch,
+    size_t scratch_capacity,
+    size_t *bytes_sent);
+
+/*
+ * Decode a received HANDOFF frame and its control payload.
+ *
+ * The frame is decoded and rejected on its own terms first, so a malformed
+ * frame never reaches the control decoder. A frame whose class is not HANDOFF
+ * is refused here: the class is what tells a receiver which registry the
+ * payload's first bytes belong to, and a payload interpreted under two classes
+ * is a payload with two meanings.
+ *
+ * The frame's payload_len is an exact boundary. A control that does not fill it
+ * is rejected rather than partially accepted.
+ *
+ * This changes no state whatever -- not the contact, not the link, not the
+ * sequence. Nothing about receiving these bytes commits this machine to
+ * anything; see mcl_node_apply_handoff.
+ */
+mcl_sdk_status_t mcl_node_receive_handoff(
+    mcl_node_t *node,
+    const uint8_t *data,
+    size_t data_size,
+    mcl_link_frame_t *frame,
+    mcl_handoff_control_t *control,
+    size_t *consumed);
+
+/*
+ * Apply a decoded control to this node's contact, and report what to send back.
+ *
+ * Every state change goes through the existing mcl_contact_* API. There is
+ * deliberately no second state machine here: a duplicate would drift from the
+ * first, and the two would disagree exactly when a migration was already going
+ * wrong.
+ *
+ *   PATH_CHALLENGE in AGREED       -> validated locally; send PATH_RESPONSE
+ *   PATH_RESPONSE  in VALIDATING   -> VALIDATED
+ *   COMMIT         in VALIDATED    -> ACTIVE on the candidate; send CONFIRM
+ *   COMMIT         in ACTIVE       -> retransmission; send CONFIRM, no change
+ *   CONFIRM        in COMMITTING   -> ACTIVE on the candidate
+ *
+ * For the peer that ECHOES a challenge, reaching VALIDATED means it has
+ * performed its half: it received a frame on the candidate and is about to send
+ * one. It does not yet know its own reply arrived. It learns that only when
+ * COMMIT follows, which the controlling peer sends only after the response
+ * reached it.
+ *
+ * A control that does not match the contact's state or its transaction
+ * references is refused WITHOUT changing anything, and the old working
+ * transport is left intact. A failed migration must never destroy the contact.
+ *
+ * Applying a control establishes no identity, authenticity, authority or trust.
+ * Every reference in it crossed an observable medium in the clear, so anyone in
+ * range can quote it back. See mcl-link/spec/link-handoff-control-v0.1.md §4.2.
+ */
+mcl_sdk_status_t mcl_node_apply_handoff(
+    mcl_node_t *node,
+    const mcl_handoff_control_t *control,
+    mcl_handoff_action_t *action);
 
 /* Narrow Link state operations */
 /*

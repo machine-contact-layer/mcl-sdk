@@ -372,3 +372,256 @@ mcl_sdk_status_t mcl_node_receive_framed(
     *has_object = 1u;
     return MCL_SDK_OK;
 }
+
+/* ---------- Handoff control path ---------- */
+
+mcl_sdk_status_t mcl_node_send_handoff(
+    mcl_node_t *node,
+    const mcl_handoff_control_t *control,
+    uint8_t flags,
+    uint8_t *scratch,
+    size_t scratch_capacity,
+    size_t *bytes_sent)
+{
+    uint8_t control_buf[MCL_HANDOFF_CONTROL_MAX_SIZE];
+    mcl_link_frame_t frame;
+    mcl_link_status_t lst;
+    size_t control_written = 0u;
+    size_t frame_written = 0u;
+    int32_t tx_res;
+
+    if (node == NULL || control == NULL || scratch == NULL ||
+        scratch_capacity == 0u) {
+        return MCL_SDK_ERR_INVALID_ARGUMENT;
+    }
+    if (node->tx_fn == NULL) {
+        return MCL_SDK_ERR_TX_UNAVAILABLE;
+    }
+
+    lst = mcl_handoff_control_encode(control, control_buf, sizeof(control_buf),
+                                     &control_written);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_LINK_FAILURE;
+    }
+
+    frame.frame_class = MCL_LINK_CLASS_HANDOFF;
+    frame.flags = flags;
+    frame.source_ref = node->source_ref;
+    frame.destination_ref = 0u;
+    frame.session_ref = 0u;
+    frame.sequence = 0u;
+    frame.freshness_ms = 0u;
+    frame.payload = control_buf;
+    frame.payload_len = (uint16_t)control_written;
+
+    if ((flags & MCL_LINK_FLAG_SESSION) != 0u) {
+        /*
+         * The frame's session reference must be the control's own. A frame that
+         * contradicted its payload would leave a receiver with two answers to
+         * "which contact is this", and the recommended redundancy check in
+         * link-handoff-control-v0.1.md section 3 would fail against frames this
+         * implementation itself produced.
+         */
+        if (node->contact.session_valid == 0u) {
+            return MCL_SDK_ERR_INVALID_STATE;
+        }
+        if (node->contact.session_ref != control->session_ref) {
+            return MCL_SDK_ERR_INVALID_STATE;
+        }
+        frame.session_ref = control->session_ref;
+    }
+    if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
+        frame.sequence = node->tx_sequence;
+    }
+
+    lst = mcl_link_frame_encode(&frame, scratch, scratch_capacity,
+                               &frame_written);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_FRAME_FAILURE;
+    }
+
+    tx_res = node->tx_fn(node->user_ctx, scratch, frame_written);
+    if (tx_res != 0) {
+        return MCL_SDK_ERR_TX_FAILURE;
+    }
+
+    /* Advance only after the transport accepted the frame. */
+    if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
+        node->tx_sequence = (uint16_t)(node->tx_sequence + 1u);
+    }
+    if (bytes_sent != NULL) {
+        *bytes_sent = frame_written;
+    }
+
+    return MCL_SDK_OK;
+}
+
+mcl_sdk_status_t mcl_node_receive_handoff(
+    mcl_node_t *node,
+    const uint8_t *data,
+    size_t data_size,
+    mcl_link_frame_t *frame,
+    mcl_handoff_control_t *control,
+    size_t *consumed)
+{
+    mcl_link_status_t lst;
+
+    if (node == NULL || data == NULL || frame == NULL || control == NULL ||
+        consumed == NULL) {
+        return MCL_SDK_ERR_INVALID_ARGUMENT;
+    }
+
+    lst = mcl_link_frame_decode(data, data_size, frame, consumed);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_FRAME_FAILURE;
+    }
+
+    if (frame->frame_class != MCL_LINK_CLASS_HANDOFF) {
+        /*
+         * Refused rather than ignored. The frame class selects which registry
+         * the payload's leading bytes belong to, so decoding a handoff control
+         * out of another class would give one payload two meanings.
+         */
+        return MCL_SDK_ERR_FRAME_FAILURE;
+    }
+    if (frame->payload == NULL) {
+        return MCL_SDK_ERR_FRAME_FAILURE;
+    }
+
+    /*
+     * payload_len is an exact boundary. The control decoder enforces it, which
+     * is why the length is passed through unmodified rather than capped.
+     */
+    lst = mcl_handoff_control_decode(frame->payload,
+                                     (size_t)frame->payload_len, control);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_LINK_FAILURE;
+    }
+
+    if ((frame->flags & MCL_LINK_FLAG_SESSION) != 0u &&
+        frame->session_ref != control->session_ref) {
+        /*
+         * The optional redundancy of link-handoff-control-v0.1.md section 3. A
+         * frame that disagrees with its own payload is rejected: there is no
+         * correct way to choose which of the two is meant.
+         */
+        return MCL_SDK_ERR_FRAME_FAILURE;
+    }
+
+    return MCL_SDK_OK;
+}
+
+mcl_sdk_status_t mcl_node_apply_handoff(
+    mcl_node_t *node,
+    const mcl_handoff_control_t *control,
+    mcl_handoff_action_t *action)
+{
+    mcl_link_status_t lst;
+    uint8_t reconfirm = 0u;
+
+    if (node == NULL || control == NULL || action == NULL) {
+        return MCL_SDK_ERR_INVALID_ARGUMENT;
+    }
+
+    *action = MCL_HANDOFF_ACTION_NONE;
+
+    switch (control->operation) {
+    case MCL_HANDOFF_OP_PATH_CHALLENGE:
+        if (node->contact.state != MCL_CONTACT_STATE_AGREED) {
+            return MCL_SDK_ERR_INVALID_STATE;
+        }
+        /*
+         * The transaction is checked BEFORE any state moves. Recording the
+         * challenge first and validating afterwards would let a control from an
+         * abandoned transaction push this contact into VALIDATING, which is a
+         * state change caused by a frame that was then refused.
+         */
+        if (node->contact.session_valid == 0u ||
+            control->migration_ref != node->contact.pending_migration_ref ||
+            control->session_ref != node->contact.session_ref) {
+            return MCL_SDK_ERR_INVALID_STATE;
+        }
+        lst = mcl_contact_validation_begin(&node->contact, control->challenge);
+        if (lst != MCL_LINK_OK) {
+            return MCL_SDK_ERR_LINK_FAILURE;
+        }
+        lst = mcl_contact_validation_response(&node->contact,
+                                              control->migration_ref,
+                                              control->session_ref,
+                                              control->challenge);
+        if (lst != MCL_LINK_OK) {
+            return MCL_SDK_ERR_LINK_FAILURE;
+        }
+        *action = MCL_HANDOFF_ACTION_SEND_PATH_RESPONSE;
+        return MCL_SDK_OK;
+
+    case MCL_HANDOFF_OP_PATH_RESPONSE:
+        lst = mcl_contact_validation_response(&node->contact,
+                                              control->migration_ref,
+                                              control->session_ref,
+                                              control->challenge);
+        if (lst != MCL_LINK_OK) {
+            /*
+             * A wrong echo is one wrong frame on a shared medium, not proof
+             * that the path is bad. mcl_contact_validation_response leaves the
+             * contact in VALIDATING deliberately, so the caller may retry.
+             */
+            return MCL_SDK_ERR_LINK_FAILURE;
+        }
+        return MCL_SDK_OK;
+
+    case MCL_HANDOFF_OP_COMMIT:
+        if (node->contact.state == MCL_CONTACT_STATE_ACTIVE) {
+            /*
+             * Retransmission after a lost CONFIRM. Answered again, and nothing
+             * changes. See link-handoff-control-v0.1.md section 8.
+             */
+            lst = mcl_contact_commit_repeat(&node->contact,
+                                            control->migration_ref,
+                                            control->session_ref, &reconfirm);
+            if (lst != MCL_LINK_OK) {
+                return MCL_SDK_ERR_LINK_FAILURE;
+            }
+            if (reconfirm == 0u) {
+                return MCL_SDK_ERR_INVALID_STATE;
+            }
+            *action = MCL_HANDOFF_ACTION_SEND_CONFIRM;
+            return MCL_SDK_OK;
+        }
+        lst = mcl_contact_commit_begin(&node->contact);
+        if (lst != MCL_LINK_OK) {
+            /* COMMIT before VALIDATED is exactly what this refuses. */
+            return MCL_SDK_ERR_LINK_FAILURE;
+        }
+        lst = mcl_contact_commit_confirm(&node->contact,
+                                         control->migration_ref,
+                                         control->session_ref);
+        if (lst != MCL_LINK_OK) {
+            /*
+             * The transaction did not match after all. Return to the old
+             * working transport rather than leaving the contact stuck in
+             * COMMITTING on the strength of a frame that was refused.
+             */
+            (void)mcl_contact_abandon_migration(&node->contact);
+            return MCL_SDK_ERR_LINK_FAILURE;
+        }
+        *action = MCL_HANDOFF_ACTION_SEND_CONFIRM;
+        return MCL_SDK_OK;
+
+    case MCL_HANDOFF_OP_CONFIRM:
+        lst = mcl_contact_commit_confirm(&node->contact,
+                                         control->migration_ref,
+                                         control->session_ref);
+        if (lst != MCL_LINK_OK) {
+            return MCL_SDK_ERR_LINK_FAILURE;
+        }
+        return MCL_SDK_OK;
+
+    default:
+        /*
+         * Unreachable through mcl_node_receive_handoff, which rejects every
+         * unassigned operation. Reachable if a caller builds one by hand.
+         */
+        return MCL_SDK_ERR_INVALID_ARGUMENT;
+    }
+}

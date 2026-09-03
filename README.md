@@ -125,7 +125,13 @@ Properties the tests pin:
 
 - a transmit sequence advances only after the transport accepted the frame, so
   a failed send leaves no gap;
-- a session reference may only be emitted once a context is actually installed;
+- a session reference comes from the **contact**, never from the Wire context.
+  An earlier revision emitted `active_context.context_id` as the frame's
+  `session_ref`, and a test asserted that behaviour, which is how it survived. A
+  machine can hold a session with no context, one session across several context
+  generations, or one contact with an entirely new context; deriving either from
+  the other made all three unrepresentable. Emitting a session reference before
+  a migration has been agreed is refused rather than filled with a placeholder;
 - a malformed or truncated frame is rejected before any semantic decoding, so
   it never reaches the Wire decoder;
 - a frame class that carries no semantics yields no object rather than having
@@ -133,3 +139,39 @@ Properties the tests pin:
 - receiving a frame changes no link state and installs no context. An
   `AUTHORITY_CLAIM` arriving in a frame does not become authority by being
   received; it is information for local policy.
+
+## Handoff control path
+
+`mcl_node_send_handoff`, `mcl_node_receive_handoff` and `mcl_node_apply_handoff`
+carry the migration controls defined in
+[`mcl-link/spec/link-handoff-control-v0.1.md`](../mcl-link/spec/link-handoff-control-v0.1.md)
+as the payload of a `HANDOFF` Link frame.
+
+This is what makes migration an on-wire protocol rather than a sequence of local
+calls. `TRANSPORT_OFFER` and `TRANSPORT_ACCEPT` have had canonical bytes since
+Wire v0.3; `PATH_CHALLENGE`, `PATH_RESPONSE`, `COMMIT` and `CONFIRM` did not,
+which meant two implementations written from the specification could agree on
+the offer and then exchange nothing further. **A hardware run driven by direct
+calls to `mcl_contact_*` on both machines proves the radios work, not that the
+migration is specified**, and must never be recorded as on-wire migration.
+
+Sending, receiving and applying are three steps on purpose. Receiving decodes
+and changes nothing; applying is an explicit call the caller makes once its own
+policy has decided to, because the interaction sequence belongs to the
+deployment (charter 2.10.1) and reception must never become authority
+(charter 2.3).
+
+`mcl_node_apply_handoff` drives the existing `mcl_contact_*` API and reports
+what the caller should send back. It contains no second state machine — a
+duplicate would drift from the first, and the two would disagree exactly when a
+migration was already going wrong. The library does not transmit the reply
+itself: during a migration the candidate and the current transport are
+different, and only the caller knows which one the reply belongs on.
+
+`tests/test_sdk_handoff.c` runs a complete migration between two nodes in which
+**the only thing crossing between them is a byte buffer**, including the case
+where a `CONFIRM` is dropped after a successful send and the peers recover by
+retransmitting `COMMIT`.
+
+Completing the sequence establishes reachability on the candidate path and
+nothing else. Every reference in it crosses an observable medium in the clear.
