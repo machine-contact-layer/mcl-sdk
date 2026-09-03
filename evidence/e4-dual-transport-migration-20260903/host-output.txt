@@ -1,0 +1,63 @@
+MCL dual-transport migration harness
+====================================
+frame_max=1048 ble_mtu=23 challenge=8 transports: BLE=3 IP=2
+host source_ref=C0FFEE05 udp 192.168.4.2 -> 192.168.4.1:5555 serial=COM3
+
+  board reset to a fresh contact on BLE
+  udp socket bound to 192.168.4.2:61294
+  board advertising at E8F60A867BD9
+  GATT session open, notifications subscribed
+
+  [+] first contact on BLE
+      board source_ref=0D0A1154
+  [+] an addressed frame reaches the peer it names
+      contact: state=ACTIVE active=BLE ctrl=BLE quiesced=0 session=00000000 peer=0D0A1154 hops=0 link=4
+  [+] a valid frame replayed on a transport the contact does not use
+      board rx_ip 0->1, wrongxp 0->1
+  [+] offers that must be refused
+  [+] migration: BLE -> IP
+  [-] a valid PATH_CHALLENGE delivered on the old path
+  [-] a duplicate TRANSPORT_OFFER after the acceptance
+  [-] the same PATH_CHALLENGE sent a second time
+      after: state=ACTIVE active=IP ctrl=IP quiesced=0 session=535F0193 peer=0D0A1154 hops=1 link=4
+  [+] ordinary traffic on the transport just migrated to
+  [+] migration: IP -> BLE
+      after: state=ACTIVE active=BLE ctrl=BLE quiesced=0 session=535F0193 peer=0D0A1154 hops=2 link=4
+  [+] handoff controls that must be refused
+  [-] a CONFIRM naming a migration that does not exist
+  [-] a truncated handoff control payload
+  [-] an unassigned handoff operation
+  [+] the contact still carries traffic after the refusals
+  [+] migration: BLE -> IP, host's COMMIT lost
+      no CONFIRM: retransmitting the COMMIT
+      after: state=ACTIVE active=IP ctrl=IP quiesced=0 session=535F0193 peer=0D0A1154 hops=3 link=4
+  [+] migration: IP -> BLE, board's CONFIRM lost
+      no CONFIRM: retransmitting the COMMIT
+      after: state=ACTIVE active=BLE ctrl=BLE quiesced=0 session=535F0193 peer=0D0A1154 hops=4 link=4
+  [+] 100 consecutive migrations, alternating BLE and IP
+      10 migrations, now on BLE
+      20 migrations, now on BLE
+      30 migrations, now on BLE
+      40 migrations, now on BLE
+      50 migrations, now on BLE
+      60 migrations, now on BLE
+      70 migrations, now on BLE
+      80 migrations, now on BLE
+      90 migrations, now on BLE
+      100 migrations, now on BLE
+      completed=100 of 100 in 14.2s
+  [+] a migration abandoned after acceptance leaves the old path working
+  [+] the old path still carries traffic
+
+Board's own record
+------------------
+  state=AGREED active=BLE ctrl=IP quiesced=0 sess=535F0193 mig=00003F3F done=00002063 hops=104 link=4 ble=1 ip=192.168.4.2:61294 rx_ble=167 rx_ip=161 tx_ble=161 tx_ip=160 rej=5 wrongxp=2 drop=1 logdrop=0
+
+Host's record
+-------------
+  BLE frames sent=167 fragments received=322 reassembly refusals=0
+  UDP datagrams sent=161 received=160 refused by the binding=0
+  frames dropped on purpose by the host=1
+  board serial bytes read=54161
+
+2989 checks, 0 failed

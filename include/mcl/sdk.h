@@ -221,6 +221,14 @@ mcl_sdk_status_t mcl_node_receive_tier0(
  * large enough for both. `flags` selects the optional Link frame fields; the
  * sequence is maintained by the node when MCL_LINK_FLAG_SEQUENCE is set.
  *
+ * MCL_LINK_FLAG_DESTINATION addresses the frame to THIS CONTACT'S PEER, whose
+ * reference was learned during first contact. There is no destination
+ * parameter: a node holds one contact, so the only machine it can address is
+ * that one, and the value is already known. Setting the flag before a peer
+ * reference has been learned returns MCL_SDK_ERR_INVALID_STATE rather than
+ * emitting a frame addressed to reference zero. The same applies to
+ * mcl_node_send_framed_tier0_ext and mcl_node_send_handoff.
+ *
  * The frame goes out on mcl_contact_data_transport(). While that reports the
  * contact QUIESCED -- between the transmission of COMMIT and the arrival of
  * CONFIRM -- this returns MCL_SDK_ERR_QUIESCED and sends nothing. In that

@@ -1,0 +1,1015 @@
+[harness] harness start
+[harness] -> RESET
+I (96) boot:  5 orlm_model       Unknown data     01 42 00970000MCLDUAL READY ssid=MCL-DUAL-TEST ip=192.168.4.1 port=5555 ch=6 ble=6d636c00-0001-4d43-4c00-6d636c626c65 src=0D0A1154 mtu=23 frame_max=1048
+MCLDUAL RESET OK
+MCLDUAL BLE CONNECTED
+[harness] step: first contact on BLE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=0 kind=0
+MCLDUAL TX transport=BLE n=29 r=0
+[harness] step: an addressed frame reaches the peer it names
+MCLDUAL RX on=BLE cls=3 src=C0FFEE05 seq=1 kind=0
+[harness] contact: state=ACTIVE active=BLE ctrl=BLE quiesced=0 session=00000000 peer=0D0A1154 hops=0 link=4
+[harness] step: a valid frame replayed on a transport the contact does not use
+[harness] -> STATUS
+MCLDUAL TX transport=BLE n=29 r=0
+MCLDUAL STATUS state=ACTIVE active=BLE ctrl=BLE quiesced=0 sess=00000000 mig=00000000 done=00000000 hops=0 link=1 ble=1 ip=none:0 rx_ble=2 rx_ip=0 tx_ble=2 tx_ip=0 rej=0 wrongxp=0 drop=0 logdrop=0
+MCLDUAL RX on=IP n=29 REJECT st=11
+[harness] -> STATUS
+MCLDUAL STATUS state=ACTIVE active=BLE ctrl=BLE quiesced=0 sess=00000000 mig=00000000 done=00000000 hops=0 link=1 ble=1 ip=192.168.4.2:61294 rx_ble=2 rx_ip=1 tx_ble=2 tx_ip=0 rej=1 wrongxp=1 drop=0 logdrop=0
+[harness] step: offers that must be refused
+[harness] step: migration: BLE -> IP
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=2 kind=5
+MCLDUAL OFFER mig=00001001 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+[harness] -> STATUS
+MCLDUAL STATUS state=AGREED active=BLE ctrl=IP quiesced=0 sess=535F0193 mig=00001001 done=00000000 hops=0 link=4 ble=1 ip=192.168.4.2:61294 rx_ble=3 rx_ip=1 tx_ble=3 tx_ip=0 rej=1 wrongxp=1 drop=0 logdrop=0
+MCLDUAL HANDOFF_RX on=BLE n=34 REJECT st=11
+[harness] -> STATUS
+MCLDUAL STATUS state=AGREED active=BLE ctrl=IP quiesced=0 sess=535F0193 mig=00001001 done=00000000 hops=0 link=4 ble=1 ip=192.168.4.2:61294 rx_ble=4 rx_ip=1 tx_ble=3 tx_ip=0 rej=2 wrongxp=2 drop=0 logdrop=0
+[harness] -> STATUS
+MCLDUAL STATUS state=AGREED active=BLE ctrl=IP quiesced=0 sess=535F0193 mig=00001001 done=00000000 hops=0 link=4 ble=1 ip=192.168.4.2:61294 rx_ble=4 rx_ip=1 tx_ble=3 tx_ip=0 rej=2 wrongxp=2 drop=0 logdrop=0
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=3 kind=5
+MCLDUAL OFFER mig=00001001 to=IP REFUSED lst=6
+[harness] -> STATUS
+MCLDUAL STATUS state=AGREED active=BLE ctrl=IP quiesced=0 sess=535F0193 mig=00001001 done=00000000 hops=0 link=4 ble=1 ip=192.168.4.2:61294 rx_ble=5 rx_ip=1 tx_ble=3 tx_ip=0 rej=2 wrongxp=2 drop=0 logdrop=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00001001 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00001001 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00001001 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+[harness] after: state=ACTIVE active=IP ctrl=IP quiesced=0 session=535F0193 peer=0D0A1154 hops=1 link=4
+[harness] step: ordinary traffic on the transport just migrated to
+MCLDUAL RX on=IP cls=3 src=C0FFEE05 seq=7 kind=0
+MCLDUAL TX transport=IP n=33 r=0
+MCLDUAL RX on=IP cls=3 src=C0FFEE05 seq=8 kind=0
+MCLDUAL TX transport=IP n=33 r=0
+MCLDUAL RX on=IP cls=3 src=C0FFEE05 seq=9 kind=0
+MCLDUAL TX transport=IP n=33 r=0
+[harness] step: migration: IP -> BLE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=10 kind=5
+MCLDUAL OFFER mig=00001002 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00001002 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00001002 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+[harness] after: state=ACTIVE active=BLE ctrl=BLE quiesced=0 session=535F0193 peer=0D0A1154 hops=2 link=4
+[harness] step: handoff controls that must be refused
+[harness] -> STATUS
+MCLDUAL STATUS state=ACTIVE active=BLE ctrl=BLE quiesced=0 sess=535F0193 mig=00000000 done=00001002 hops=2 link=4 ble=1 ip=192.168.4.2:61294 rx_ble=7 rx_ip=8 tx_ble=5 tx_ip=7 rej=2 wrongxp=2 drop=0 logdrop=0
+MCLDUAL HANDOFF_RX on=BLE op=4 mig=00007777 sess=535F0193 apply=4 state=ACTIVE active=BLE act=0
+MCLDUAL HANDOFF_RX on=BLE n=25 REJECT st=4
+MCLDUAL HANDOFF_RX on=BLE n=26 REJECT st=4
+[harness] -> STATUS
+MCLDUAL STATUS state=ACTIVE active=BLE ctrl=BLE quiesced=0 sess=535F0193 mig=00000000 done=00001002 hops=2 link=4 ble=1 ip=192.168.4.2:61294 rx_ble=10 rx_ip=8 tx_ble=5 tx_ip=7 rej=5 wrongxp=2 drop=0 logdrop=0
+[harness] step: the contact still carries traffic after the refusals
+MCLDUAL RX on=BLE cls=3 src=C0FFEE05 seq=13 kind=0
+MCLDUAL TX transport=BLE n=33 r=0
+[harness] step: migration: BLE -> IP, host's COMMIT lost
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=14 kind=5
+MCLDUAL OFFER mig=00001003 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00001003 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+[harness] host dropped a frame on purpose: transport=IP n=28
+[harness] retransmitting COMMIT after a deliberate loss
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00001003 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+[harness] after: state=ACTIVE active=IP ctrl=IP quiesced=0 session=535F0193 peer=0D0A1154 hops=3 link=4
+[harness] step: migration: IP -> BLE, board's CONFIRM lost
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=18 kind=5
+MCLDUAL OFFER mig=00001004 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00001004 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+[harness] -> DROPNEXT
+MCLDUAL DROPNEXT ARMED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00001004 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 DROPPED_ON_PURPOSE
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+[harness] retransmitting COMMIT after a deliberate loss
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00001004 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+[harness] after: state=ACTIVE active=BLE ctrl=BLE quiesced=0 session=535F0193 peer=0D0A1154 hops=4 link=4
+[harness] step: 100 consecutive migrations, alternating BLE and IP
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=22 kind=5
+MCLDUAL OFFER mig=00002000 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002000 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002000 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=25 kind=5
+MCLDUAL OFFER mig=00002001 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002001 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002001 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=28 kind=5
+MCLDUAL OFFER mig=00002002 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002002 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002002 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=31 kind=5
+MCLDUAL OFFER mig=00002003 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002003 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002003 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=34 kind=5
+MCLDUAL OFFER mig=00002004 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002004 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002004 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=37 kind=5
+MCLDUAL OFFER mig=00002005 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002005 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002005 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=40 kind=5
+MCLDUAL OFFER mig=00002006 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002006 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002006 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=43 kind=5
+MCLDUAL OFFER mig=00002007 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002007 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002007 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=46 kind=5
+MCLDUAL OFFER mig=00002008 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002008 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002008 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=49 kind=5
+MCLDUAL OFFER mig=00002009 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002009 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002009 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=52 kind=5
+MCLDUAL OFFER mig=0000200A to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000200A sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000200A sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=55 kind=5
+MCLDUAL OFFER mig=0000200B to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000200B sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000200B sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=58 kind=5
+MCLDUAL OFFER mig=0000200C to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000200C sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000200C sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=61 kind=5
+MCLDUAL OFFER mig=0000200D to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000200D sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000200D sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=64 kind=5
+MCLDUAL OFFER mig=0000200E to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000200E sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000200E sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=67 kind=5
+MCLDUAL OFFER mig=0000200F to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000200F sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000200F sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=70 kind=5
+MCLDUAL OFFER mig=00002010 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002010 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002010 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=73 kind=5
+MCLDUAL OFFER mig=00002011 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002011 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002011 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=76 kind=5
+MCLDUAL OFFER mig=00002012 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002012 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002012 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=79 kind=5
+MCLDUAL OFFER mig=00002013 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002013 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002013 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=82 kind=5
+MCLDUAL OFFER mig=00002014 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002014 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002014 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=85 kind=5
+MCLDUAL OFFER mig=00002015 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002015 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002015 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=88 kind=5
+MCLDUAL OFFER mig=00002016 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002016 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002016 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=91 kind=5
+MCLDUAL OFFER mig=00002017 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002017 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002017 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=94 kind=5
+MCLDUAL OFFER mig=00002018 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002018 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002018 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=97 kind=5
+MCLDUAL OFFER mig=00002019 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002019 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002019 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=100 kind=5
+MCLDUAL OFFER mig=0000201A to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000201A sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000201A sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=103 kind=5
+MCLDUAL OFFER mig=0000201B to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000201B sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000201B sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=106 kind=5
+MCLDUAL OFFER mig=0000201C to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000201C sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000201C sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=109 kind=5
+MCLDUAL OFFER mig=0000201D to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000201D sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000201D sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=112 kind=5
+MCLDUAL OFFER mig=0000201E to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000201E sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000201E sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=115 kind=5
+MCLDUAL OFFER mig=0000201F to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000201F sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000201F sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=118 kind=5
+MCLDUAL OFFER mig=00002020 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002020 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002020 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=121 kind=5
+MCLDUAL OFFER mig=00002021 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002021 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002021 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=124 kind=5
+MCLDUAL OFFER mig=00002022 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002022 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002022 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=127 kind=5
+MCLDUAL OFFER mig=00002023 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002023 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002023 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=130 kind=5
+MCLDUAL OFFER mig=00002024 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002024 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002024 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=133 kind=5
+MCLDUAL OFFER mig=00002025 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002025 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002025 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=136 kind=5
+MCLDUAL OFFER mig=00002026 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002026 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002026 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=139 kind=5
+MCLDUAL OFFER mig=00002027 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002027 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002027 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=142 kind=5
+MCLDUAL OFFER mig=00002028 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002028 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002028 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=145 kind=5
+MCLDUAL OFFER mig=00002029 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002029 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002029 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=148 kind=5
+MCLDUAL OFFER mig=0000202A to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000202A sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000202A sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=151 kind=5
+MCLDUAL OFFER mig=0000202B to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000202B sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000202B sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=154 kind=5
+MCLDUAL OFFER mig=0000202C to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000202C sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000202C sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=157 kind=5
+MCLDUAL OFFER mig=0000202D to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000202D sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000202D sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=160 kind=5
+MCLDUAL OFFER mig=0000202E to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000202E sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000202E sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=163 kind=5
+MCLDUAL OFFER mig=0000202F to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000202F sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000202F sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=166 kind=5
+MCLDUAL OFFER mig=00002030 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002030 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002030 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=169 kind=5
+MCLDUAL OFFER mig=00002031 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002031 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002031 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=172 kind=5
+MCLDUAL OFFER mig=00002032 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002032 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002032 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=175 kind=5
+MCLDUAL OFFER mig=00002033 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002033 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002033 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=178 kind=5
+MCLDUAL OFFER mig=00002034 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002034 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002034 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=181 kind=5
+MCLDUAL OFFER mig=00002035 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002035 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002035 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=184 kind=5
+MCLDUAL OFFER mig=00002036 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002036 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002036 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=187 kind=5
+MCLDUAL OFFER mig=00002037 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002037 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002037 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=190 kind=5
+MCLDUAL OFFER mig=00002038 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002038 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002038 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=193 kind=5
+MCLDUAL OFFER mig=00002039 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002039 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002039 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=196 kind=5
+MCLDUAL OFFER mig=0000203A to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000203A sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000203A sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=199 kind=5
+MCLDUAL OFFER mig=0000203B to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000203B sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000203B sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=202 kind=5
+MCLDUAL OFFER mig=0000203C to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000203C sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000203C sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=205 kind=5
+MCLDUAL OFFER mig=0000203D to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000203D sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000203D sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=208 kind=5
+MCLDUAL OFFER mig=0000203E to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000203E sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000203E sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=211 kind=5
+MCLDUAL OFFER mig=0000203F to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000203F sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000203F sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=214 kind=5
+MCLDUAL OFFER mig=00002040 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002040 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002040 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=217 kind=5
+MCLDUAL OFFER mig=00002041 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002041 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002041 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=220 kind=5
+MCLDUAL OFFER mig=00002042 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002042 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002042 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=223 kind=5
+MCLDUAL OFFER mig=00002043 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002043 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002043 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=226 kind=5
+MCLDUAL OFFER mig=00002044 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002044 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002044 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=229 kind=5
+MCLDUAL OFFER mig=00002045 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002045 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002045 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=232 kind=5
+MCLDUAL OFFER mig=00002046 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002046 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002046 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=235 kind=5
+MCLDUAL OFFER mig=00002047 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002047 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002047 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=238 kind=5
+MCLDUAL OFFER mig=00002048 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002048 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002048 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=241 kind=5
+MCLDUAL OFFER mig=00002049 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002049 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002049 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=244 kind=5
+MCLDUAL OFFER mig=0000204A to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000204A sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000204A sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=247 kind=5
+MCLDUAL OFFER mig=0000204B to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000204B sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000204B sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=250 kind=5
+MCLDUAL OFFER mig=0000204C to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000204C sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000204C sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=253 kind=5
+MCLDUAL OFFER mig=0000204D to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000204D sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000204D sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=256 kind=5
+MCLDUAL OFFER mig=0000204E to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000204E sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000204E sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=259 kind=5
+MCLDUAL OFFER mig=0000204F to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000204F sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000204F sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=262 kind=5
+MCLDUAL OFFER mig=00002050 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002050 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002050 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=265 kind=5
+MCLDUAL OFFER mig=00002051 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002051 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002051 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=268 kind=5
+MCLDUAL OFFER mig=00002052 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002052 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002052 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=271 kind=5
+MCLDUAL OFFER mig=00002053 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002053 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002053 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=274 kind=5
+MCLDUAL OFFER mig=00002054 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002054 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002054 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=277 kind=5
+MCLDUAL OFFER mig=00002055 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002055 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002055 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=280 kind=5
+MCLDUAL OFFER mig=00002056 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002056 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002056 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=283 kind=5
+MCLDUAL OFFER mig=00002057 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002057 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002057 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=286 kind=5
+MCLDUAL OFFER mig=00002058 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002058 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002058 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=289 kind=5
+MCLDUAL OFFER mig=00002059 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002059 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002059 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=292 kind=5
+MCLDUAL OFFER mig=0000205A to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000205A sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000205A sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=295 kind=5
+MCLDUAL OFFER mig=0000205B to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000205B sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000205B sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=298 kind=5
+MCLDUAL OFFER mig=0000205C to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000205C sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000205C sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=301 kind=5
+MCLDUAL OFFER mig=0000205D to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000205D sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000205D sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=304 kind=5
+MCLDUAL OFFER mig=0000205E to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=0000205E sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=0000205E sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=307 kind=5
+MCLDUAL OFFER mig=0000205F to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=0000205F sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=0000205F sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=310 kind=5
+MCLDUAL OFFER mig=00002060 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002060 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002060 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=313 kind=5
+MCLDUAL OFFER mig=00002061 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002061 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002061 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=316 kind=5
+MCLDUAL OFFER mig=00002062 to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+MCLDUAL HANDOFF_RX on=IP op=1 mig=00002062 sess=535F0193 apply=0 state=VALIDATED active=BLE act=1
+MCLDUAL TX transport=IP n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=IP op=3 mig=00002062 sess=535F0193 apply=0 state=ACTIVE active=IP act=2
+MCLDUAL TX transport=IP n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+MCLDUAL RX on=IP cls=0 src=C0FFEE05 seq=319 kind=5
+MCLDUAL OFFER mig=00002063 to=BLE ACCEPT sess=535F0193
+MCLDUAL TX transport=IP n=38 r=0
+MCLDUAL HANDOFF_RX on=BLE op=1 mig=00002063 sess=535F0193 apply=0 state=VALIDATED active=IP act=1
+MCLDUAL TX transport=BLE n=36 r=0
+MCLDUAL HANDOFF_TX op=2 st=0 state=VALIDATED
+MCLDUAL HANDOFF_RX on=BLE op=3 mig=00002063 sess=535F0193 apply=0 state=ACTIVE active=BLE act=2
+MCLDUAL TX transport=BLE n=28 r=0
+MCLDUAL HANDOFF_TX op=4 st=0 state=ACTIVE
+[harness] step: a migration abandoned after acceptance leaves the old path working
+MCLDUAL RX on=BLE cls=0 src=C0FFEE05 seq=322 kind=5
+MCLDUAL OFFER mig=00003F3F to=IP ACCEPT sess=535F0193
+MCLDUAL TX transport=BLE n=38 r=0
+[harness] step: the old path still carries traffic
+MCLDUAL RX on=BLE cls=3 src=C0FFEE05 seq=323 kind=0
+MCLDUAL TX transport=BLE n=33 r=0
+[harness] -> STATUS
+MCLDUAL STATUS state=AGREED active=BLE ctrl=IP quiesced=0 sess=535F0193 mig=00003F3F done=00002063 hops=104 link=4 ble=1 ip=192.168.4.2:61294 rx_ble=167 rx_ip=161 tx_ble=161 tx_ip=160 rej=5 wrongxp=2 drop=1 logdrop=0
+[harness] -> RESET
+MCLDUAL RESET OK

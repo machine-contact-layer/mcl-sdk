@@ -666,6 +666,75 @@ static void test_framed_extensions_round_trip(void)
           "a frame scratch too small fails as a whole");
 }
 
+/*
+ * A frame that names a destination must name the peer, and a node that has not
+ * learned one must refuse rather than address the frame to nobody.
+ *
+ * This is a regression test. Every send path set destination_ref to zero while
+ * still honouring MCL_LINK_FLAG_DESTINATION, so an "addressed" frame was
+ * addressed to reference zero and every correct receiver refused it as
+ * NOT_ADDRESSED. The sending half of the addressing rule did not exist, which
+ * is invisible in a loopback test and immediately fatal on a shared bearer.
+ */
+static void test_destination_flag_addresses_the_peer(void)
+{
+    capture_tx_t cap;
+    mcl_node_t sender;
+    mcl_node_t receiver;
+    capture_tx_t receiver_cap;
+    mcl_wire_tier0_t object;
+    mcl_wire_tier0_t decoded;
+    mcl_link_frame_t frame;
+    uint8_t scratch[512];
+    uint8_t has_object = 0u;
+    size_t consumed = 0u;
+    size_t sent = 0u;
+    const uint32_t peer_ref = 0x51EEDU;
+
+    printf("  [+] MCL_LINK_FLAG_DESTINATION addresses the contact's peer\n");
+
+    init_node(&sender, &cap);
+    make_presence(&object);
+
+    /* No peer learned yet: refused, and nothing is transmitted. */
+    CHECK(mcl_node_send_framed_tier0(&sender, &object, MCL_LINK_CLASS_DATA,
+                                     MCL_LINK_FLAG_DESTINATION,
+                                     scratch, sizeof(scratch), &sent)
+          == MCL_SDK_ERR_INVALID_STATE,
+          "addressing with no known peer is refused");
+    CHECK(cap.calls == 0u, "the refused frame never reached the transport");
+
+    /*
+     * The receiver's source_ref is what the sender must put in the destination,
+     * so the two nodes are given different references and the receiver decides
+     * for itself whether the frame was for it.
+     */
+    init_node(&receiver, &receiver_cap);
+    receiver.source_ref = peer_ref;
+    receiver.contact.local_ref = peer_ref;
+
+    CHECK(mcl_contact_set_peer_ref(mcl_node_get_contact(&sender), peer_ref)
+          == MCL_LINK_OK, "peer reference recorded");
+    CHECK(mcl_node_send_framed_tier0(&sender, &object, MCL_LINK_CLASS_DATA,
+                                     MCL_LINK_FLAG_DESTINATION,
+                                     scratch, sizeof(scratch), &sent)
+          == MCL_SDK_OK,
+          "addressed send succeeds once the peer is known");
+
+    CHECK(mcl_node_receive_framed(&receiver, TEST_TRANSPORT, cap.buffer,
+                                  cap.size, &frame, &decoded, &has_object,
+                                  &consumed) == MCL_SDK_OK,
+          "the addressed peer accepts the frame");
+    CHECK(frame.destination_ref == peer_ref,
+          "the frame names the peer rather than zero");
+
+    /* Any other machine on the same bearer must decline it. */
+    CHECK(mcl_node_receive_framed(&sender, TEST_TRANSPORT, cap.buffer,
+                                  cap.size, &frame, &decoded, &has_object,
+                                  &consumed) == MCL_SDK_NOT_ADDRESSED,
+          "a machine that is not the destination declines it");
+}
+
 int main(void)
 {
     printf("MCL SDK framed contact path tests\n");
@@ -681,6 +750,7 @@ int main(void)
     test_missing_consumed_is_an_argument_error();
     test_argument_validation();
     test_framed_extensions_round_trip();
+    test_destination_flag_addresses_the_peer();
 
     printf("\n%d checks, %d failed\n", tests_run, tests_failed);
     return (tests_failed == 0) ? 0 : 1;

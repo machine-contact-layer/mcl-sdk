@@ -1,0 +1,13 @@
+# Firmware build tree. build-firmware.ps1 stages the canonical protocol sources
+# into it and deletes them afterwards; nothing here is a source of record. The
+# image's SHA-256 is recorded in the evidence README instead, which ties a run
+# to exact inputs without carrying a binary that will be stale by the next one.
+hardware/esp32-dual-peer/build/
+
+# .NET build output for the host harness
+tools/dual-transport-peer/bin/
+tools/dual-transport-peer/obj/
+
+# CMake build trees
+build/
+out/

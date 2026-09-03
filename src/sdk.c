@@ -78,6 +78,48 @@ static int mcl_node_frame_addressed_elsewhere(
            frame->destination_ref != node->source_ref;
 }
 
+/*
+ * Fill the destination reference for a frame whose caller asked for one.
+ *
+ * WHY THE DESTINATION IS NOT A PARAMETER
+ *
+ * A node holds one contact, so the only machine it is in a position to address
+ * is that contact's peer, and the reference for it was recorded during first
+ * contact. Taking a destination as an argument would let a caller address a
+ * frame to a machine this node has no contact with, and the correct value is
+ * already known.
+ *
+ * WHAT THIS FIXES
+ *
+ * Every send path used to set destination_ref to zero unconditionally while
+ * still honouring MCL_LINK_FLAG_DESTINATION from the caller's flags. Setting
+ * the flag therefore produced a frame addressed to reference zero -- addressed
+ * to nobody -- which a correct receiver refuses as NOT_ADDRESSED. The sending
+ * half of the addressing rule did not exist: on a shared bearer a node could
+ * not direct a frame at its peer at all, and MCL_SDK_NOT_ADDRESSED was
+ * reachable only for frames this SDK had not produced. Found by the
+ * dual-transport hardware harness, where two machines share a bearer and it
+ * matters.
+ *
+ * Refusing when the peer is unknown mirrors the session_ref rule in
+ * mcl_node_send_framed_tier0: emitting a reference this node has not learned
+ * would invite a peer to correlate against something that does not exist.
+ */
+static mcl_sdk_status_t mcl_node_fill_destination(
+    const mcl_node_t *node,
+    mcl_link_frame_t *frame)
+{
+    if ((frame->flags & MCL_LINK_FLAG_DESTINATION) == 0u) {
+        frame->destination_ref = 0u;
+        return MCL_SDK_OK;
+    }
+    if (node->contact.peer_ref_valid == 0u) {
+        return MCL_SDK_ERR_INVALID_STATE;
+    }
+    frame->destination_ref = node->contact.peer_ref;
+    return MCL_SDK_OK;
+}
+
 
 mcl_sdk_status_t mcl_node_init(
     mcl_node_t *node,
@@ -337,6 +379,7 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
     mcl_link_frame_t frame;
     mcl_wire_status_t wst;
     mcl_link_status_t lst;
+    mcl_sdk_status_t sst;
     size_t wire_written = 0u;
     size_t frame_written = 0u;
     int32_t tx_res;
@@ -371,9 +414,13 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
     frame.frame_class = frame_class;
     frame.flags = flags;
     frame.source_ref = node->source_ref;
-    frame.destination_ref = 0u;
     frame.session_ref = 0u;
     frame.sequence = 0u;
+
+    sst = mcl_node_fill_destination(node, &frame);
+    if (sst != MCL_SDK_OK) {
+        return sst;
+    }
     frame.freshness_ms = 0u;
     frame.payload = wire_buf;
     frame.payload_len = (uint16_t)wire_written;
@@ -540,6 +587,7 @@ mcl_sdk_status_t mcl_node_send_framed_tier0_ext(
     mcl_link_frame_t frame;
     mcl_wire_status_t wst;
     mcl_link_status_t lst;
+    mcl_sdk_status_t sst;
     size_t wire_written = 0u;
     size_t frame_written = 0u;
     int32_t tx_res;
@@ -579,9 +627,13 @@ mcl_sdk_status_t mcl_node_send_framed_tier0_ext(
     frame.frame_class = frame_class;
     frame.flags = flags;
     frame.source_ref = node->source_ref;
-    frame.destination_ref = 0u;
     frame.session_ref = 0u;
     frame.sequence = 0u;
+
+    sst = mcl_node_fill_destination(node, &frame);
+    if (sst != MCL_SDK_OK) {
+        return sst;
+    }
     frame.freshness_ms = 0u;
     frame.payload = wire_scratch;
     frame.payload_len = (uint16_t)wire_written;
@@ -701,6 +753,7 @@ mcl_sdk_status_t mcl_node_send_handoff(
     uint8_t control_buf[MCL_HANDOFF_CONTROL_MAX_SIZE];
     mcl_link_frame_t frame;
     mcl_link_status_t lst;
+    mcl_sdk_status_t sst;
     size_t control_written = 0u;
     size_t frame_written = 0u;
     int32_t tx_res;
@@ -757,9 +810,13 @@ mcl_sdk_status_t mcl_node_send_handoff(
     frame.frame_class = MCL_LINK_CLASS_HANDOFF;
     frame.flags = flags;
     frame.source_ref = node->source_ref;
-    frame.destination_ref = 0u;
     frame.session_ref = 0u;
     frame.sequence = 0u;
+
+    sst = mcl_node_fill_destination(node, &frame);
+    if (sst != MCL_SDK_OK) {
+        return sst;
+    }
     frame.freshness_ms = 0u;
     frame.payload = control_buf;
     frame.payload_len = (uint16_t)control_written;

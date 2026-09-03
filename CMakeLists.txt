@@ -2,9 +2,12 @@ cmake_minimum_required(VERSION 3.16)
 project(mcl_sdk LANGUAGES C)
 
 option(MCL_SDK_BUILD_TESTS "Build host-side test suite and examples" ON)
+option(MCL_SDK_BUILD_TOOLS "Build the dual-transport host harness shared library" OFF)
 
 set(MCL_WIRE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-wire" CACHE PATH "Path to mcl-wire repository")
 set(MCL_LINK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-link" CACHE PATH "Path to mcl-link repository")
+set(MCL_IP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-ip" CACHE PATH "Path to mcl-ip repository")
+set(MCL_BLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-ble" CACHE PATH "Path to mcl-ble repository")
 
 # --- Sibling dependency targets (always available) ---
 
@@ -119,4 +122,38 @@ if(MCL_SDK_BUILD_TESTS)
         C_STANDARD 99
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
+endif()
+
+# --- Host harness shared library ---
+#
+# The dual-transport experiment needs a host peer holding a BLE link and a UDP
+# socket at the same time. Windows exposes BLE only through WinRT, so that
+# harness is written in C# -- and a harness that reimplemented framing,
+# fragmentation or the migration state machine in C# would be measuring itself
+# against the board rather than measuring the shipped code. Instead the whole
+# stack is compiled into one shared library and the harness calls into it
+# through tools/dual_host_shim.c, which adds no protocol logic of its own.
+if(MCL_SDK_BUILD_TOOLS)
+    foreach(pair "mcl-ip;${MCL_IP_DIR}/src/ip_binding.c" "mcl-ble;${MCL_BLE_DIR}/src/ble_binding.c")
+        list(GET pair 0 dep_name)
+        list(GET pair 1 dep_src)
+        if(NOT EXISTS "${dep_src}")
+            message(FATAL_ERROR
+                "MCL_SDK_BUILD_TOOLS requires ${dep_name}. Expected ${dep_src}.")
+        endif()
+    endforeach()
+
+    add_library(mcl_dual_host SHARED
+        tools/dual_host_shim.c
+        "${MCL_IP_DIR}/src/ip_binding.c"
+        "${MCL_BLE_DIR}/src/ble_binding.c")
+    target_include_directories(mcl_dual_host PRIVATE
+        "${MCL_IP_DIR}/include"
+        "${MCL_BLE_DIR}/include")
+    target_link_libraries(mcl_dual_host PRIVATE mcl_sdk)
+    set_target_properties(mcl_dual_host PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO
+        POSITION_INDEPENDENT_CODE ON)
 endif()
