@@ -65,7 +65,7 @@ int main(void)
     send_obj.priority = 1u;
     send_obj.source_ref = 0xCAFEBABEu;
     send_obj.body.presence.machine_class = 2u;
-    send_obj.body.presence.capability_digest = 0x112233u; /* 24-bit field */
+    send_obj.body.presence.capability_tag = 0x112233u; /* 24-bit field */
     send_obj.body.presence.ttl = 10u;
 
     printf("Node A: encoding and sending Tier-0 PRESENCE...\n");
@@ -77,9 +77,9 @@ int main(void)
     mcl_node_receive_tier0(&node_b, pipe.buffer, pipe.size, &recv_obj, &consumed);
 
     if (recv_obj.kind == MCL_WIRE_KIND_PRESENCE &&
-        recv_obj.body.presence.capability_digest == 0x112233u) {
-        printf("Node B: successfully decoded PRESENCE! capability_digest = 0x%06X\n",
-               recv_obj.body.presence.capability_digest);
+        recv_obj.body.presence.capability_tag == 0x112233u) {
+        printf("Node B: successfully decoded PRESENCE! capability_tag = 0x%06X\n",
+               recv_obj.body.presence.capability_tag);
         puts("Hello World: OK");
         return 0;
     }

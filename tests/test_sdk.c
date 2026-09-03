@@ -85,7 +85,7 @@ static void test_hello_world_presence(void)
     send_obj.priority = 1u;
     send_obj.source_ref = 0x11223344u;
     send_obj.body.presence.machine_class = 2u;
-    send_obj.body.presence.capability_digest = 0x887766u; /* 24-bit field */
+    send_obj.body.presence.capability_tag = 0x887766u; /* 24-bit field */
     send_obj.body.presence.ttl = 15u;
 
     CHECK_SDK_STATUS(
@@ -105,7 +105,7 @@ static void test_hello_world_presence(void)
     CHECK_TRUE(recv_obj.priority == send_obj.priority);
     CHECK_TRUE(recv_obj.source_ref == send_obj.source_ref);
     CHECK_TRUE(recv_obj.body.presence.machine_class == send_obj.body.presence.machine_class);
-    CHECK_TRUE(recv_obj.body.presence.capability_digest == send_obj.body.presence.capability_digest);
+    CHECK_TRUE(recv_obj.body.presence.capability_tag == send_obj.body.presence.capability_tag);
     CHECK_TRUE(recv_obj.body.presence.ttl == send_obj.body.presence.ttl);
 }
 
@@ -144,7 +144,7 @@ static void test_all_six_tier0_semantics(void)
         send_obj.priority = 0u;
         send_obj.source_ref = 0x1000u;
         send_obj.body.presence.machine_class = 5u;
-        send_obj.body.presence.capability_digest = 0xabcdefu; /* 24-bit */
+        send_obj.body.presence.capability_tag = 0xabcdefu; /* 24-bit */
         send_obj.body.presence.ttl = 30u;
 
         CHECK_SDK_STATUS(mcl_node_send_tier0(&node_a, &send_obj, scratch, sizeof(scratch), &bytes_sent), MCL_SDK_OK);
@@ -283,7 +283,7 @@ static void test_negative_cases(void)
     obj.priority = 1u;
     obj.source_ref = 1u;
     obj.body.presence.machine_class = 1u;
-    obj.body.presence.capability_digest = 0x123u;
+    obj.body.presence.capability_tag = 0x123u;
     obj.body.presence.ttl = 10u;
 
     /* 1. NULL node init */

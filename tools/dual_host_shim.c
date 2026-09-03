@@ -222,7 +222,7 @@ MCLX_API int32_t mclx_send_presence(void *node, int32_t frame_class,
     obj.priority = 2u;
     obj.source_ref = ((const mcl_node_t *)node)->source_ref;
     obj.body.presence.machine_class = 7u;
-    obj.body.presence.capability_digest = 0x112233u;
+    obj.body.presence.capability_tag = 0x112233u;
     obj.body.presence.ttl = 60u;
 
     if (addressed != 0) {

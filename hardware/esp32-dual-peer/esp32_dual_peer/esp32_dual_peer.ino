@@ -326,7 +326,7 @@ static void fill_presence(mcl_wire_tier0_t *obj)
     obj->priority = 2u;
     obj->source_ref = kBoardSourceRef;
     obj->body.presence.machine_class = 3u;
-    obj->body.presence.capability_digest = 0x17C0DEu;
+    obj->body.presence.capability_tag = 0x17C0DEu;
     obj->body.presence.ttl = 30u;
 }
 
