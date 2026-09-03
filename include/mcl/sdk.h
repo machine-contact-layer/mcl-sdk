@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "mcl/wire.h"
+#include "mcl/extension.h"
 #include "mcl/link.h"
 #include "mcl/contact.h"
 #include "mcl/handoff.h"
@@ -165,6 +166,69 @@ mcl_sdk_status_t mcl_node_receive_framed(
     uint8_t *has_object,
     size_t *consumed);
 
+/* ---------- Framed path with Wire extensions ----------
+ *
+ * mcl_node_send_framed_tier0 and mcl_node_receive_framed carry objects with no
+ * extensions, and the receive side REFUSES an object whose header sets
+ * extension_present rather than decoding the body and discarding the rest.
+ * That is the safe default -- an extension may be critical -- but it also means
+ * those two functions cannot talk to a peer that uses extensions at all.
+ *
+ * These are the extension-aware counterparts.
+ *
+ * Both take caller-owned buffers for BOTH stages, rather than putting a
+ * worst-case Wire buffer on the stack as the non-extension path does. A Tier-0
+ * object with a full extension block is an order of magnitude larger than one
+ * without, and a hidden 275-byte stack frame is not something a Cortex-M0
+ * integrator should discover from a stack overflow. Charter: caller-owned state
+ * and buffers.
+ */
+
+/*
+ * Send a Tier-0 object with extensions inside a Link frame.
+ *
+ * `wire_scratch` holds the encoded object and must be at least
+ * MCL_WIRE_TIER0_EXT_MAX_SIZE for the largest block; `frame_scratch` holds the
+ * finished frame. Passing extension_count 0 produces bytes identical to
+ * mcl_node_send_framed_tier0.
+ */
+mcl_sdk_status_t mcl_node_send_framed_tier0_ext(
+    mcl_node_t *node,
+    const mcl_wire_tier0_t *object,
+    const mcl_wire_extension_t *extensions,
+    size_t extension_count,
+    mcl_link_frame_class_t frame_class,
+    uint8_t flags,
+    uint8_t *wire_scratch,
+    size_t wire_scratch_capacity,
+    uint8_t *frame_scratch,
+    size_t frame_scratch_capacity,
+    size_t *bytes_sent);
+
+/*
+ * Decode a received Link frame and, when it carries a Tier-0 object, decode
+ * that object and its extension block.
+ *
+ * `known` states which critical extension ids this caller implements; NULL
+ * means none, and every critical extension then makes the object undecodable.
+ * `reader` is positioned at the extension block on success and borrows from
+ * `data`, so it stays valid only as long as `data` does.
+ *
+ * As with mcl_node_receive_framed, this changes no link state. A received frame
+ * is information for local policy, never an instruction.
+ */
+mcl_sdk_status_t mcl_node_receive_framed_ext(
+    mcl_node_t *node,
+    const uint8_t *data,
+    size_t data_size,
+    mcl_link_frame_t *frame,
+    mcl_wire_tier0_t *object,
+    mcl_wire_extension_reader_t *reader,
+    mcl_wire_extension_known_fn known,
+    void *known_user,
+    uint8_t *has_object,
+    size_t *consumed);
+
 /* ---------- Handoff control path ----------
  *
  * The migration controls defined in mcl/handoff.h, carried as the payload of a
@@ -250,6 +314,12 @@ mcl_sdk_status_t mcl_node_receive_handoff(
  *   COMMIT         in VALIDATED    -> ACTIVE on the candidate; send CONFIRM
  *   COMMIT         in ACTIVE       -> retransmission; send CONFIRM, no change
  *   CONFIRM        in COMMITTING   -> ACTIVE on the candidate
+ *
+ * Applying a COMMIT goes straight from VALIDATED to ACTIVE and never enters
+ * COMMITTING. That state is reserved for the peer that SENT a commit and does
+ * not know whether it arrived -- the peer that is forbidden to roll back. A
+ * receiver has sent no CONFIRM and is under no such constraint, so keeping the
+ * two out of one state is what makes the rollback rule enforceable.
  *
  * For the peer that ECHOES a challenge, reaching VALIDATED means it has
  * performed its half: it received a frame on the candidate and is about to send

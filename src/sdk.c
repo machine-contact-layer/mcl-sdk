@@ -373,6 +373,151 @@ mcl_sdk_status_t mcl_node_receive_framed(
     return MCL_SDK_OK;
 }
 
+/* ---------- Framed path with Wire extensions ---------- */
+
+mcl_sdk_status_t mcl_node_send_framed_tier0_ext(
+    mcl_node_t *node,
+    const mcl_wire_tier0_t *object,
+    const mcl_wire_extension_t *extensions,
+    size_t extension_count,
+    mcl_link_frame_class_t frame_class,
+    uint8_t flags,
+    uint8_t *wire_scratch,
+    size_t wire_scratch_capacity,
+    uint8_t *frame_scratch,
+    size_t frame_scratch_capacity,
+    size_t *bytes_sent)
+{
+    mcl_link_frame_t frame;
+    mcl_wire_status_t wst;
+    mcl_link_status_t lst;
+    size_t wire_written = 0u;
+    size_t frame_written = 0u;
+    int32_t tx_res;
+
+    if (node == NULL || object == NULL || wire_scratch == NULL ||
+        frame_scratch == NULL || wire_scratch_capacity == 0u ||
+        frame_scratch_capacity == 0u) {
+        return MCL_SDK_ERR_INVALID_ARGUMENT;
+    }
+    if (node->tx_fn == NULL) {
+        return MCL_SDK_ERR_TX_UNAVAILABLE;
+    }
+
+    wst = mcl_wire_tier0_encode_ext(object, extensions, extension_count,
+                                    wire_scratch, wire_scratch_capacity,
+                                    &wire_written);
+    if (wst != MCL_WIRE_OK) {
+        return MCL_SDK_ERR_WIRE_FAILURE;
+    }
+    if (wire_written > (size_t)MCL_LINK_FRAME_MAX_PAYLOAD) {
+        /* The object encoded, but no legal Link frame can carry it. Reported
+         * here rather than as a frame-encode failure, because the caller's
+         * remedy is fewer or smaller extensions. */
+        return MCL_SDK_ERR_BUFFER_TOO_SMALL;
+    }
+
+    frame.frame_class = frame_class;
+    frame.flags = flags;
+    frame.source_ref = node->source_ref;
+    frame.destination_ref = 0u;
+    frame.session_ref = 0u;
+    frame.sequence = 0u;
+    frame.freshness_ms = 0u;
+    frame.payload = wire_scratch;
+    frame.payload_len = (uint16_t)wire_written;
+
+    if ((flags & MCL_LINK_FLAG_SESSION) != 0u) {
+        /* The session reference comes from the contact, never from the Wire
+         * context. See mcl_node_send_framed_tier0. */
+        if (node->contact.session_valid == 0u) {
+            return MCL_SDK_ERR_INVALID_STATE;
+        }
+        frame.session_ref = node->contact.session_ref;
+    }
+    if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
+        frame.sequence = node->tx_sequence;
+    }
+
+    lst = mcl_link_frame_encode(&frame, frame_scratch, frame_scratch_capacity,
+                                &frame_written);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_FRAME_FAILURE;
+    }
+
+    tx_res = node->tx_fn(node->user_ctx, frame_scratch, frame_written);
+    if (tx_res != 0) {
+        return MCL_SDK_ERR_TX_FAILURE;
+    }
+
+    /* Advance only after the transport accepted the frame. */
+    if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
+        node->tx_sequence = (uint16_t)(node->tx_sequence + 1u);
+    }
+    if (bytes_sent != NULL) {
+        *bytes_sent = frame_written;
+    }
+
+    return MCL_SDK_OK;
+}
+
+mcl_sdk_status_t mcl_node_receive_framed_ext(
+    mcl_node_t *node,
+    const uint8_t *data,
+    size_t data_size,
+    mcl_link_frame_t *frame,
+    mcl_wire_tier0_t *object,
+    mcl_wire_extension_reader_t *reader,
+    mcl_wire_extension_known_fn known,
+    void *known_user,
+    uint8_t *has_object,
+    size_t *consumed)
+{
+    mcl_link_status_t lst;
+    mcl_wire_status_t wst;
+    size_t wire_consumed = 0u;
+
+    if (node == NULL || data == NULL || frame == NULL || reader == NULL ||
+        has_object == NULL || consumed == NULL) {
+        return MCL_SDK_ERR_INVALID_ARGUMENT;
+    }
+
+    *has_object = 0u;
+
+    lst = mcl_link_frame_decode(data, data_size, frame, consumed);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_FRAME_FAILURE;
+    }
+
+    if (frame->frame_class != MCL_LINK_CLASS_CONTACT &&
+        frame->frame_class != MCL_LINK_CLASS_DATA &&
+        frame->frame_class != MCL_LINK_CLASS_CAPABILITY &&
+        frame->frame_class != MCL_LINK_CLASS_NEGOTIATION) {
+        /* A class that carries no semantics yields no object rather than
+         * having meaning manufactured for it. */
+        return MCL_SDK_OK;
+    }
+    if (object == NULL || frame->payload == NULL || frame->payload_len == 0u) {
+        return MCL_SDK_OK;
+    }
+
+    wst = mcl_wire_tier0_decode_ext_known(frame->payload,
+                                          (size_t)frame->payload_len,
+                                          object, reader, known, known_user,
+                                          &wire_consumed);
+    if (wst != MCL_WIRE_OK) {
+        return MCL_SDK_ERR_WIRE_FAILURE;
+    }
+    if (wire_consumed != (size_t)frame->payload_len) {
+        /* payload_len is an exact declared boundary. An object that ends before
+         * it means the payload carries bytes nobody declared. */
+        return MCL_SDK_ERR_WIRE_FAILURE;
+    }
+
+    *has_object = 1u;
+    return MCL_SDK_OK;
+}
+
 /* ---------- Handoff control path ---------- */
 
 mcl_sdk_status_t mcl_node_send_handoff(
@@ -588,21 +733,18 @@ mcl_sdk_status_t mcl_node_apply_handoff(
             *action = MCL_HANDOFF_ACTION_SEND_CONFIRM;
             return MCL_SDK_OK;
         }
-        lst = mcl_contact_commit_begin(&node->contact);
+        /*
+         * One call, so a refused commit leaves the contact in VALIDATED rather
+         * than stranded in COMMITTING. The receiving peer must never enter
+         * COMMITTING: that state means "I sent COMMIT and do not know whether
+         * it arrived", and rollback is forbidden there. A peer that has not
+         * sent CONFIRM is in no such difficulty.
+         */
+        lst = mcl_contact_commit_accept(&node->contact,
+                                        control->migration_ref,
+                                        control->session_ref);
         if (lst != MCL_LINK_OK) {
-            /* COMMIT before VALIDATED is exactly what this refuses. */
-            return MCL_SDK_ERR_LINK_FAILURE;
-        }
-        lst = mcl_contact_commit_confirm(&node->contact,
-                                         control->migration_ref,
-                                         control->session_ref);
-        if (lst != MCL_LINK_OK) {
-            /*
-             * The transaction did not match after all. Return to the old
-             * working transport rather than leaving the contact stuck in
-             * COMMITTING on the strength of a frame that was refused.
-             */
-            (void)mcl_contact_abandon_migration(&node->contact);
+            /* COMMIT before VALIDATED, or naming another transaction. */
             return MCL_SDK_ERR_LINK_FAILURE;
         }
         *action = MCL_HANDOFF_ACTION_SEND_CONFIRM;

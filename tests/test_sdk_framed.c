@@ -49,6 +49,17 @@ static int32_t capture_tx(void *user, const uint8_t *data, size_t data_size)
     return 0;
 }
 
+/*
+ * The SDK can carry extensions end to end, and the non-extension receive path
+ * still refuses an extended object rather than dropping its extensions.
+ */
+static uint8_t sdk_knows_id(void *user, uint32_t extension_id)
+{
+    return (extension_id == *(const uint32_t *)user) ? 1u : 0u;
+}
+
+static void test_framed_extensions_round_trip(void);
+
 static void make_presence(mcl_wire_tier0_t *obj)
 {
     memset(obj, 0, sizeof(*obj));
@@ -505,6 +516,119 @@ static void test_missing_consumed_is_an_argument_error(void)
           "null consumed is an argument error, not a frame failure");
 }
 
+static void test_framed_extensions_round_trip(void)
+{
+    mcl_node_t node;
+    capture_tx_t cap;
+    mcl_wire_tier0_t object;
+    mcl_wire_tier0_t decoded;
+    mcl_wire_extension_t extensions[1];
+    mcl_wire_extension_reader_t reader;
+    mcl_wire_extension_t read_back;
+    mcl_link_frame_t frame;
+    static const uint8_t value[] = {0xA5u, 0x5Au, 0xC3u};
+    uint8_t wire_scratch[MCL_WIRE_TIER0_EXT_MAX_SIZE];
+    uint8_t frame_scratch[512];
+    uint32_t known_id = 21u;
+    size_t sent = 0u, consumed = 0u;
+    uint8_t has_object = 0u;
+
+    printf("[TEST] framed path carries Wire extensions\n");
+
+    init_node(&node, &cap);
+    make_presence(&object);
+
+    extensions[0].id = known_id;
+    extensions[0].critical = 1u;
+    extensions[0].value = value;
+    extensions[0].value_size = sizeof(value);
+
+    CHECK(mcl_node_send_framed_tier0_ext(&node, &object, extensions, 1u,
+                                         MCL_LINK_CLASS_DATA, 0u,
+                                         wire_scratch, sizeof(wire_scratch),
+                                         frame_scratch, sizeof(frame_scratch),
+                                         &sent) == MCL_SDK_OK,
+          "an object with a critical extension is framed and sent");
+
+    /* The extension-unaware receive path must refuse it rather than decode the
+     * body and drop an extension the sender marked as required. */
+    CHECK(mcl_node_receive_framed(&node, cap.buffer, cap.size, &frame,
+                                  &decoded, &has_object, &consumed) ==
+          MCL_SDK_ERR_WIRE_FAILURE,
+          "the non-extension path refuses an extended object");
+
+    /* A caller that does not know the id is in the same position. */
+    {
+        uint32_t other = 22u;
+        CHECK(mcl_node_receive_framed_ext(&node, cap.buffer, cap.size, &frame,
+                                          &decoded, &reader, sdk_knows_id,
+                                          &other, &has_object, &consumed) ==
+              MCL_SDK_ERR_WIRE_FAILURE,
+              "an unknown critical extension refuses the object");
+    }
+
+    /* A caller that knows it gets the object and the extension. */
+    CHECK(mcl_node_receive_framed_ext(&node, cap.buffer, cap.size, &frame,
+                                      &decoded, &reader, sdk_knows_id,
+                                      &known_id, &has_object, &consumed) ==
+          MCL_SDK_OK, "a known critical extension decodes");
+    CHECK(has_object == 1u, "the object was decoded");
+    CHECK(consumed == cap.size, "the whole frame was consumed");
+    CHECK(decoded.kind == MCL_WIRE_KIND_PRESENCE, "semantics preserved");
+
+    {
+        uint8_t has_extension = 0u;
+        CHECK(mcl_wire_extension_reader_next(&reader, &read_back,
+                                             &has_extension) == MCL_WIRE_OK &&
+              has_extension == 1u, "the extension is readable");
+        CHECK(read_back.id == known_id, "extension id preserved");
+        CHECK(read_back.value_size == sizeof(value) &&
+              memcmp(read_back.value, value, sizeof(value)) == 0,
+              "extension value preserved exactly");
+    }
+
+    /* No extensions produces the same bytes as the ordinary framed sender. */
+    {
+        capture_tx_t plain_cap;
+        mcl_node_t plain_node;
+        uint8_t plain_scratch[512];
+        size_t plain_sent = 0u;
+
+        init_node(&plain_node, &plain_cap);
+        CHECK(mcl_node_send_framed_tier0(&plain_node, &object,
+                                         MCL_LINK_CLASS_DATA, 0u,
+                                         plain_scratch, sizeof(plain_scratch),
+                                         &plain_sent) == MCL_SDK_OK,
+              "plain framed send");
+
+        init_node(&node, &cap);
+        CHECK(mcl_node_send_framed_tier0_ext(&node, &object, NULL, 0u,
+                                             MCL_LINK_CLASS_DATA, 0u,
+                                             wire_scratch,
+                                             sizeof(wire_scratch),
+                                             frame_scratch,
+                                             sizeof(frame_scratch),
+                                             &sent) == MCL_SDK_OK,
+              "extension-aware send with no extensions");
+        CHECK(sent == plain_sent && memcmp(cap.buffer, plain_cap.buffer,
+                                           sent) == 0,
+              "no extensions produces byte-identical output");
+    }
+
+    CHECK(mcl_node_send_framed_tier0_ext(&node, &object, extensions, 1u,
+                                         MCL_LINK_CLASS_DATA, 0u,
+                                         wire_scratch, 4u,
+                                         frame_scratch, sizeof(frame_scratch),
+                                         &sent) == MCL_SDK_ERR_WIRE_FAILURE,
+          "a wire scratch too small fails as a whole");
+    CHECK(mcl_node_send_framed_tier0_ext(&node, &object, extensions, 1u,
+                                         MCL_LINK_CLASS_DATA, 0u,
+                                         wire_scratch, sizeof(wire_scratch),
+                                         frame_scratch, 4u,
+                                         &sent) == MCL_SDK_ERR_FRAME_FAILURE,
+          "a frame scratch too small fails as a whole");
+}
+
 int main(void)
 {
     printf("MCL SDK framed contact path tests\n");
@@ -519,6 +643,7 @@ int main(void)
     test_payload_boundary_must_be_exact();
     test_missing_consumed_is_an_argument_error();
     test_argument_validation();
+    test_framed_extensions_round_trip();
 
     printf("\n%d checks, %d failed\n", tests_run, tests_failed);
     return (tests_failed == 0) ? 0 : 1;
