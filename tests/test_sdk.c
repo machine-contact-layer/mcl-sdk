@@ -67,11 +67,15 @@ static void test_hello_world_presence(void)
     config_a.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
     config_a.tx_fn = memory_tx_callback;
     config_a.user_ctx = &transport;
+    config_a.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    config_a.role = MCL_CONTACT_ROLE_INITIATOR;
     CHECK_SDK_STATUS(mcl_node_init(&node_a, &config_a), MCL_SDK_OK);
 
     config_b.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
     config_b.tx_fn = NULL; /* receive-only node */
     config_b.user_ctx = NULL;
+    config_b.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    config_b.role = MCL_CONTACT_ROLE_INITIATOR;
     CHECK_SDK_STATUS(mcl_node_init(&node_b, &config_b), MCL_SDK_OK);
 
     send_obj.kind = MCL_WIRE_KIND_PRESENCE;
@@ -117,11 +121,15 @@ static void test_all_six_tier0_semantics(void)
     config_a.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
     config_a.tx_fn = memory_tx_callback;
     config_a.user_ctx = &transport;
+    config_a.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    config_a.role = MCL_CONTACT_ROLE_INITIATOR;
     CHECK_SDK_STATUS(mcl_node_init(&node_a, &config_a), MCL_SDK_OK);
 
     config_b.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
     config_b.tx_fn = NULL;
     config_b.user_ctx = NULL;
+    config_b.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    config_b.role = MCL_CONTACT_ROLE_INITIATOR;
     CHECK_SDK_STATUS(mcl_node_init(&node_b, &config_b), MCL_SDK_OK);
 
     /* 1. PRESENCE */
@@ -237,6 +245,10 @@ static void test_all_six_tier0_semantics(void)
         send_obj.kind = MCL_WIRE_KIND_TRANSPORT_OFFER;
         send_obj.priority = 0u;
         send_obj.source_ref = 0x6000u;
+        /* migration_ref must be set explicitly: the round trip compares the
+         * whole object, so an uninitialised field would make the result
+         * depend on stack residue. */
+        send_obj.body.transport_offer.migration_ref = UINT32_C(0x4D194201);
         send_obj.body.transport_offer.transport_id = 2u;
         send_obj.body.transport_offer.profile_id = 1u;
         send_obj.body.transport_offer.endpoint_token = 0xabcdef01u;
@@ -254,6 +266,7 @@ static void test_negative_cases(void)
 {
     mcl_node_t node;
     mcl_node_config_t config = {0};
+    /* transport_id 0 is the reserved value, so it must be set explicitly. */
     memory_transport_t transport;
     uint8_t scratch[64];
     uint8_t wire_bytes[64];
@@ -277,6 +290,8 @@ static void test_negative_cases(void)
     config.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
     config.tx_fn = memory_tx_callback;
     config.user_ctx = &transport;
+    config.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    config.role = MCL_CONTACT_ROLE_INITIATOR;
     CHECK_SDK_STATUS(mcl_node_init(&node, &config), MCL_SDK_OK);
 
     /* 2. NULL send arguments */
@@ -295,6 +310,8 @@ static void test_negative_cases(void)
         rx_config.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
         rx_config.tx_fn = NULL;
         rx_config.user_ctx = NULL;
+        rx_config.transport_id = MCL_CONTACT_TRANSPORT_AP;
+        rx_config.role = MCL_CONTACT_ROLE_INITIATOR;
         CHECK_SDK_STATUS(mcl_node_init(&rx_only, &rx_config), MCL_SDK_OK);
         CHECK_SDK_STATUS(mcl_node_send_tier0(&rx_only, &obj, scratch, sizeof(scratch), &written), MCL_SDK_ERR_TX_UNAVAILABLE);
     }
@@ -340,6 +357,8 @@ static void test_policy_sovereignty_and_trust_invariants(void)
     config.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
     config.tx_fn = memory_tx_callback;
     config.user_ctx = &transport;
+    config.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    config.role = MCL_CONTACT_ROLE_INITIATOR;
     CHECK_SDK_STATUS(mcl_node_init(&node, &config), MCL_SDK_OK);
 
     /*
@@ -387,6 +406,8 @@ static void test_link_sdk_integration(void)
     config.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
     config.tx_fn = NULL;
     config.user_ctx = NULL;
+    config.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    config.role = MCL_CONTACT_ROLE_INITIATOR;
 
     /* 1. Node init -> link in IDLE */
     CHECK_SDK_STATUS(mcl_node_init(&node, &config), MCL_SDK_OK);

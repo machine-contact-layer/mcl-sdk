@@ -44,12 +44,16 @@ int main(void)
     cfg_a.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
     cfg_a.tx_fn = pipe_tx;
     cfg_a.user_ctx = &pipe;
+    cfg_a.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    cfg_a.role = MCL_CONTACT_ROLE_INITIATOR;
     mcl_node_init(&node_a, &cfg_a);
 
     /* Configure Node B as a receiver node */
     cfg_b.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
     cfg_b.tx_fn = NULL;
     cfg_b.user_ctx = NULL;
+    cfg_b.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    cfg_b.role = MCL_CONTACT_ROLE_INITIATOR;
     mcl_node_init(&node_b, &cfg_b);
 
     /* Create a Tier-0 PRESENCE announcement on Node A */

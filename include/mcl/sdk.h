@@ -6,6 +6,7 @@
 
 #include "mcl/wire.h"
 #include "mcl/link.h"
+#include "mcl/contact.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,10 +53,30 @@ typedef struct {
      * must never treat it as proof of who sent something.
      */
     uint32_t source_ref;
+    /*
+     * Transport this node's contact starts on, from the transport-id registry.
+     * Required: a contact always exists on some medium, and leaving it
+     * unspecified would mean the node could not describe its own migrations.
+     */
+    uint8_t transport_id;
+    /* Ordering role for migration negotiation. Confers no authority. */
+    mcl_contact_role_t role;
 } mcl_node_config_t;
 
+/*
+ * One node currently tracks one contact, mirroring the single mcl_link_t it
+ * already holds. A machine that must hold several concurrent contacts
+ * instantiates several nodes.
+ *
+ * That is a real limitation, not an oversight: distinguishing several
+ * simultaneous contacts, each with its own candidate endpoint, is the
+ * multi-peer cross-binding problem recorded in
+ * mcl-link/research/secure-contact-threat-model.md, and it is not solved by
+ * giving one node an array.
+ */
 typedef struct {
     mcl_link_t link;
+    mcl_contact_t contact;
     mcl_sdk_tx_fn tx_fn;
     void *user_ctx;
     uint16_t supported_wire_majors_mask;
@@ -144,6 +165,17 @@ mcl_sdk_status_t mcl_node_receive_framed(
     size_t *consumed);
 
 /* Narrow Link state operations */
+/*
+ * Contact and migration state.
+ *
+ * Separate from the Link accessors on purpose. A Wire context_id and a contact
+ * session_ref are different things with different lifetimes, and an earlier
+ * revision of this SDK copied the former into the latter when emitting a frame.
+ * See the note on MCL_LINK_FLAG_SESSION in mcl_node_send_framed_tier0.
+ */
+mcl_contact_t *mcl_node_get_contact(mcl_node_t *node);
+const mcl_contact_t *mcl_node_get_contact_const(const mcl_node_t *node);
+
 mcl_link_t *mcl_node_get_link(mcl_node_t *node);
 const mcl_link_t *mcl_node_get_link_const(const mcl_node_t *node);
 

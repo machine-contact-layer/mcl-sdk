@@ -21,6 +21,17 @@ mcl_sdk_status_t mcl_node_init(
     node->source_ref = config->source_ref;
     node->tx_sequence = 0u;
 
+    /*
+     * The contact begins on the configured transport. Its source_ref doubles as
+     * the contact's local reference so the two cannot disagree about who this
+     * node is within the contact.
+     */
+    lst = mcl_contact_begin(&node->contact, config->role,
+                            config->source_ref, config->transport_id);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_LINK_FAILURE;
+    }
+
     return MCL_SDK_OK;
 }
 
@@ -37,6 +48,17 @@ mcl_sdk_status_t mcl_node_reset(mcl_node_t *node)
         return MCL_SDK_ERR_LINK_FAILURE;
     }
     node->tx_sequence = 0u;
+
+    /*
+     * Reset the contact onto the transport it is currently using rather than
+     * the one it started on. A reset clears session and migration state; it is
+     * not a claim that the machine teleported back to the first medium.
+     */
+    lst = mcl_contact_begin(&node->contact, node->contact.role,
+                            node->source_ref, node->contact.active_transport);
+    if (lst != MCL_LINK_OK) {
+        return MCL_SDK_ERR_LINK_FAILURE;
+    }
 
     return MCL_SDK_OK;
 }
@@ -113,6 +135,16 @@ mcl_sdk_status_t mcl_node_receive_tier0(
     }
 
     return MCL_SDK_OK;
+}
+
+mcl_contact_t *mcl_node_get_contact(mcl_node_t *node)
+{
+    return (node != NULL) ? &node->contact : NULL;
+}
+
+const mcl_contact_t *mcl_node_get_contact_const(const mcl_node_t *node)
+{
+    return (node != NULL) ? &node->contact : NULL;
 }
 
 mcl_link_t *mcl_node_get_link(mcl_node_t *node)
@@ -197,7 +229,6 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
     size_t wire_written = 0u;
     size_t frame_written = 0u;
     int32_t tx_res;
-    uint8_t has_context = 0u;
 
     if (node == NULL || object == NULL || scratch == NULL || scratch_capacity == 0u) {
         return MCL_SDK_ERR_INVALID_ARGUMENT;
@@ -223,15 +254,33 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
 
     if ((flags & MCL_LINK_FLAG_SESSION) != 0u) {
         /*
-         * A session reference is only meaningful once a context has actually
-         * been installed. Emitting one before that would invite a peer to
-         * correlate against a session that does not exist.
+         * The session reference comes from the CONTACT, never from the Wire
+         * context.
+         *
+         * An earlier revision emitted node->link.active_context.context_id
+         * here, which conflated two unrelated things:
+         *
+         *   session_ref   correlates a continuing contact across a transport
+         *                 change; it is chosen in TRANSPORT_ACCEPT and lives
+         *                 for as long as the contact does
+         *
+         *   context_id    names an installed semantic compression ruleset; it
+         *                 has its own generation and can change, or never
+         *                 exist, while the contact is perfectly healthy
+         *
+         * A machine can have a session with no context, the same session across
+         * several context generations, or the same contact with an entirely new
+         * context. Deriving one from the other made all three unrepresentable
+         * and forced a session reference to depend on a compression decision.
+         *
+         * Emitting a session reference before a migration has been agreed would
+         * invite a peer to correlate against a session that does not exist, so
+         * that is refused rather than filled with a placeholder.
          */
-        (void)mcl_link_has_active_context(&node->link, &has_context);
-        if (has_context == 0u) {
+        if (node->contact.session_valid == 0u) {
             return MCL_SDK_ERR_INVALID_STATE;
         }
-        frame.session_ref = node->link.active_context.context_id;
+        frame.session_ref = node->contact.session_ref;
     }
     if ((flags & MCL_LINK_FLAG_SEQUENCE) != 0u) {
         frame.sequence = node->tx_sequence;

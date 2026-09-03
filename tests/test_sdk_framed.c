@@ -67,8 +67,12 @@ static void init_node(mcl_node_t *node, capture_tx_t *cap)
     memset(cap, 0, sizeof(*cap));
     memset(&cfg, 0, sizeof(cfg));
     cfg.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
+    cfg.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    cfg.role = MCL_CONTACT_ROLE_INITIATOR;
     cfg.tx_fn = capture_tx;
     cfg.user_ctx = cap;
+    cfg.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    cfg.role = MCL_CONTACT_ROLE_INITIATOR;
     cfg.source_ref = 0xABCD1234u;
 
     CHECK(mcl_node_init(node, &cfg) == MCL_SDK_OK, "node init");
@@ -174,9 +178,18 @@ static void test_session_flag_requires_context(void)
                                      MCL_LINK_FLAG_SESSION,
                                      scratch, sizeof(scratch), &sent)
               == MCL_SDK_ERR_INVALID_STATE,
-          "session flag refused with no context");
+          "session flag refused with no agreed session");
 
-    /* Install a context through the ordinary lifecycle. */
+    /*
+     * Installing a Wire context must NOT make a session reference available.
+     *
+     * An earlier revision emitted link.active_context.context_id as the frame's
+     * session_ref, and a test here asserted that behaviour, which is why the
+     * defect survived. The two are unrelated: a context names an installed
+     * semantic compression ruleset, and a session reference correlates a
+     * contact continuing across a transport change. A machine can hold either
+     * without the other.
+     */
     CHECK(mcl_node_link_transition(&node, MCL_LINK_STATE_DISCOVERED) == MCL_SDK_OK,
           "to DISCOVERED");
     CHECK(mcl_node_link_transition(&node, MCL_LINK_STATE_CAPABILITIES) == MCL_SDK_OK,
@@ -194,8 +207,30 @@ static void test_session_flag_requires_context(void)
 
     CHECK(mcl_node_send_framed_tier0(&node, &obj, MCL_LINK_CLASS_DATA,
                                      MCL_LINK_FLAG_SESSION,
+                                     scratch, sizeof(scratch), &sent)
+              == MCL_SDK_ERR_INVALID_STATE,
+          "an installed context still provides no session reference");
+
+    /*
+     * A session reference becomes available only when a migration has actually
+     * been agreed, because that is where it is chosen.
+     */
+    {
+        mcl_contact_t *contact = mcl_node_get_contact(&node);
+        CHECK(contact != NULL, "contact accessor");
+        CHECK(mcl_contact_record_offer(contact, UINT32_C(0x4D194201),
+                                       MCL_CONTACT_TRANSPORT_BLE, 1u,
+                                       0xD00Du, 30u) == MCL_LINK_OK, "offer");
+        CHECK(mcl_contact_agree(contact, UINT32_C(0x4D194201),
+                                MCL_CONTACT_TRANSPORT_BLE, 1u,
+                                UINT32_C(0x5E5510C7)) == MCL_LINK_OK, "agree");
+    }
+
+    cap.size = 0u;
+    CHECK(mcl_node_send_framed_tier0(&node, &obj, MCL_LINK_CLASS_DATA,
+                                     MCL_LINK_FLAG_SESSION,
                                      scratch, sizeof(scratch), &sent) == MCL_SDK_OK,
-          "session flag accepted with a context");
+          "session flag accepted once a session is agreed");
 
     {
         mcl_link_frame_t frame;
@@ -205,8 +240,10 @@ static void test_session_flag_requires_context(void)
         CHECK(mcl_node_receive_framed(&node, cap.buffer, cap.size, &frame,
                                       &decoded, &has_object, &consumed) == MCL_SDK_OK,
               "receive session frame");
-        CHECK(frame.session_ref == 0x0000BEEFu,
-              "session ref comes from the installed context");
+        CHECK(frame.session_ref == UINT32_C(0x5E5510C7),
+              "session ref comes from the contact, not the Wire context");
+        CHECK(frame.session_ref != 0x0000BEEFu,
+              "session ref is not the installed context id");
     }
 }
 
@@ -358,6 +395,11 @@ static void test_argument_validation(void)
         mcl_node_config_t cfg;
         memset(&cfg, 0, sizeof(cfg));
         cfg.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
+        cfg.tx_fn = NULL;
+        cfg.user_ctx = NULL;
+        cfg.source_ref = 0u;
+        cfg.transport_id = MCL_CONTACT_TRANSPORT_AP;
+        cfg.role = MCL_CONTACT_ROLE_INITIATOR;
         CHECK(mcl_node_init(&rx_only, &cfg) == MCL_SDK_OK, "receive-only node init");
         CHECK(mcl_node_send_framed_tier0(&rx_only, &obj, MCL_LINK_CLASS_DATA, 0u,
                                          scratch, sizeof(scratch), &sent)
@@ -388,6 +430,10 @@ static void test_payload_boundary_must_be_exact(void)
 
     memset(&cfg, 0, sizeof(cfg));
     cfg.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
+    cfg.tx_fn = NULL;
+    cfg.user_ctx = NULL;
+    cfg.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    cfg.role = MCL_CONTACT_ROLE_INITIATOR;
     cfg.source_ref = 0x55u;
     CHECK(mcl_node_init(&rx_node, &cfg) == MCL_SDK_OK, "receiver init");
 
@@ -446,6 +492,11 @@ static void test_missing_consumed_is_an_argument_error(void)
 
     memset(&cfg, 0, sizeof(cfg));
     cfg.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
+    cfg.tx_fn = NULL;
+    cfg.user_ctx = NULL;
+    cfg.source_ref = 0u;
+    cfg.transport_id = MCL_CONTACT_TRANSPORT_AP;
+    cfg.role = MCL_CONTACT_ROLE_INITIATOR;
     CHECK(mcl_node_init(&rx_node, &cfg) == MCL_SDK_OK, "init");
     memset(raw, 0, sizeof(raw));
 

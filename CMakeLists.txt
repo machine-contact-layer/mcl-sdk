@@ -18,7 +18,8 @@ set_target_properties(mcl_wire_dep PROPERTIES
     C_EXTENSIONS NO)
 
 add_library(mcl_link_dep STATIC
-    ${MCL_LINK_DIR}/src/link.c)
+    ${MCL_LINK_DIR}/src/link.c
+    ${MCL_LINK_DIR}/src/contact.c)
 target_include_directories(mcl_link_dep PUBLIC ${MCL_LINK_DIR}/include)
 set_target_properties(mcl_link_dep PROPERTIES
     C_STANDARD 99
