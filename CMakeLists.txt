@@ -24,7 +24,9 @@ add_library(mcl_link_dep STATIC
     ${MCL_LINK_DIR}/src/link.c
     ${MCL_LINK_DIR}/src/contact.c
     ${MCL_LINK_DIR}/src/rendezvous.c
-    ${MCL_LINK_DIR}/src/handoff.c)
+    ${MCL_LINK_DIR}/src/handoff.c
+    ${MCL_LINK_DIR}/src/control.c
+    ${MCL_LINK_DIR}/src/negotiation.c)
 target_include_directories(mcl_link_dep PUBLIC ${MCL_LINK_DIR}/include)
 set_target_properties(mcl_link_dep PROPERTIES
     C_STANDARD 99
@@ -73,6 +75,14 @@ if(MCL_SDK_BUILD_TESTS)
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
     add_test(NAME mcl_sdk_handoff COMMAND mcl_sdk_test_handoff)
+
+    add_executable(mcl_sdk_test_multi_contact tests/test_multi_contact.c)
+    target_link_libraries(mcl_sdk_test_multi_contact PRIVATE mcl_sdk)
+    set_target_properties(mcl_sdk_test_multi_contact PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+    add_test(NAME mcl_sdk_multi_contact COMMAND mcl_sdk_test_multi_contact)
 
     add_executable(mcl_sdk_test_headers tests/test_headers.c)
     target_link_libraries(mcl_sdk_test_headers PRIVATE mcl_sdk)
