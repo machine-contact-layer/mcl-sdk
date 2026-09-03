@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(mcl_wire CONFIG)
+find_dependency(mcl_link CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/mcl_sdkTargets.cmake")
+check_required_components(mcl_sdk)

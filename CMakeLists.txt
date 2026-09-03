@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(mcl_sdk LANGUAGES C)
 
+set(MCL_SDK_VERSION 1.0.0)
+
 option(MCL_SDK_BUILD_TESTS "Build host-side test suite and examples" ON)
 option(MCL_SDK_BUILD_TOOLS "Build the dual-transport host harness shared library" OFF)
 
@@ -9,36 +11,73 @@ set(MCL_LINK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-link" CACHE PATH "Path to m
 set(MCL_IP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-ip" CACHE PATH "Path to mcl-ip repository")
 set(MCL_BLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-ble" CACHE PATH "Path to mcl-ble repository")
 
-# --- Sibling dependency targets (always available) ---
+# --- Dependencies: installed packages first, sibling sources as a fallback ---
+#
+# Two consumers exist and they need different things.
+#
+# An EXTERNAL consumer has an install prefix and no idea these repositories are
+# siblings; it must resolve mcl_wire and mcl_link through find_package. That is
+# also the only configuration from which this package can be installed, because
+# an exported target may not reference a target that was never installed.
+#
+# A DEVELOPER has the eight repositories checked out side by side and wants to
+# build without installing anything first. That path compiles the sibling
+# sources directly, exactly as before.
+#
+# find_package first, so the external case is the one that is exercised whenever
+# it is available rather than being a rarely-used branch.
+find_package(mcl_wire QUIET CONFIG)
+find_package(mcl_link QUIET CONFIG)
 
-add_library(mcl_wire_dep STATIC
-    ${MCL_WIRE_DIR}/src/wire.c
-    ${MCL_WIRE_DIR}/src/extension.c)
-target_include_directories(mcl_wire_dep PUBLIC ${MCL_WIRE_DIR}/include)
-set_target_properties(mcl_wire_dep PROPERTIES
-    C_STANDARD 99
-    C_STANDARD_REQUIRED YES
-    C_EXTENSIONS NO)
+if(mcl_wire_FOUND AND mcl_link_FOUND)
+    set(MCL_SDK_DEPS_INSTALLED TRUE)
+    add_library(mcl_wire_dep INTERFACE)
+    target_link_libraries(mcl_wire_dep INTERFACE mcl::mcl_wire)
+    add_library(mcl_link_dep INTERFACE)
+    target_link_libraries(mcl_link_dep INTERFACE mcl::mcl_link)
+    message(STATUS "mcl-sdk: using installed mcl_wire and mcl_link")
+else()
+    set(MCL_SDK_DEPS_INSTALLED FALSE)
+    foreach(dep_dir "${MCL_WIRE_DIR}" "${MCL_LINK_DIR}")
+        if(NOT EXISTS "${dep_dir}/include/mcl")
+            message(FATAL_ERROR
+                "mcl-sdk needs either installed mcl_wire/mcl_link packages or "
+                "the sibling repositories. Neither was found; missing: ${dep_dir}")
+        endif()
+    endforeach()
 
-add_library(mcl_link_dep STATIC
-    ${MCL_LINK_DIR}/src/link.c
-    ${MCL_LINK_DIR}/src/contact.c
-    ${MCL_LINK_DIR}/src/rendezvous.c
-    ${MCL_LINK_DIR}/src/handoff.c
-    ${MCL_LINK_DIR}/src/control.c
-    ${MCL_LINK_DIR}/src/negotiation.c)
-target_include_directories(mcl_link_dep PUBLIC ${MCL_LINK_DIR}/include)
-set_target_properties(mcl_link_dep PROPERTIES
-    C_STANDARD 99
-    C_STANDARD_REQUIRED YES
-    C_EXTENSIONS NO)
+    add_library(mcl_wire_dep STATIC
+        ${MCL_WIRE_DIR}/src/wire.c
+        ${MCL_WIRE_DIR}/src/extension.c)
+    target_include_directories(mcl_wire_dep PUBLIC ${MCL_WIRE_DIR}/include)
+    set_target_properties(mcl_wire_dep PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
+    add_library(mcl_link_dep STATIC
+        ${MCL_LINK_DIR}/src/link.c
+        ${MCL_LINK_DIR}/src/contact.c
+        ${MCL_LINK_DIR}/src/rendezvous.c
+        ${MCL_LINK_DIR}/src/handoff.c
+        ${MCL_LINK_DIR}/src/control.c
+        ${MCL_LINK_DIR}/src/negotiation.c)
+    target_include_directories(mcl_link_dep PUBLIC ${MCL_LINK_DIR}/include)
+    set_target_properties(mcl_link_dep PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+    message(STATUS "mcl-sdk: building mcl_wire and mcl_link from sibling sources")
+endif()
 
 # --- SDK library ---
 
 add_library(mcl_sdk STATIC
     src/sdk.c)
+# Build-tree include path. The install-interface path is added in the install
+# section, which is the only configuration that can export this target.
 target_include_directories(mcl_sdk PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_link_libraries(mcl_sdk PUBLIC
     mcl_wire_dep
     mcl_link_dep)
@@ -166,4 +205,41 @@ if(MCL_SDK_BUILD_TOOLS)
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO
         POSITION_INDEPENDENT_CODE ON)
+endif()
+
+# --- Installation and package export ---
+#
+# Only possible when the dependencies came from installed packages: an exported
+# target may not reference a target that was never installed, and mcl_wire_dep
+# built from sibling sources is exactly such a target. Refusing loudly beats
+# producing a package whose Targets.cmake names something the consumer cannot
+# resolve.
+if(MCL_SDK_DEPS_INSTALLED)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
+
+    target_include_directories(mcl_sdk PUBLIC
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+
+    install(TARGETS mcl_sdk mcl_wire_dep mcl_link_dep
+        EXPORT mcl_sdkTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(DIRECTORY include/mcl DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(EXPORT mcl_sdkTargets
+        FILE mcl_sdkTargets.cmake
+        NAMESPACE mcl::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mcl_sdk)
+
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/mcl_sdkConfigVersion.cmake"
+        VERSION ${MCL_SDK_VERSION}
+        COMPATIBILITY SameMajorVersion)
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/mcl_sdkConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/mcl_sdkConfig.cmake"
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mcl_sdk)
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/mcl_sdkConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/mcl_sdkConfigVersion.cmake"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/mcl_sdk)
 endif()
