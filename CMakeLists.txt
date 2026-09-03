@@ -19,7 +19,8 @@ set_target_properties(mcl_wire_dep PROPERTIES
 
 add_library(mcl_link_dep STATIC
     ${MCL_LINK_DIR}/src/link.c
-    ${MCL_LINK_DIR}/src/contact.c)
+    ${MCL_LINK_DIR}/src/contact.c
+    ${MCL_LINK_DIR}/src/rendezvous.c)
 target_include_directories(mcl_link_dep PUBLIC ${MCL_LINK_DIR}/include)
 set_target_properties(mcl_link_dep PROPERTIES
     C_STANDARD 99
@@ -84,6 +85,17 @@ if(MCL_SDK_BUILD_TESTS)
                 "${binding_dir}/include")
             target_compile_definitions(mcl_sdk_test_transport_registry PRIVATE
                 MCL_HAVE_${binding}_BINDING)
+        endif()
+    endforeach()
+    # Each binding's profile registry restates its transport_id, so it is a
+    # second place the assignment can drift.
+    foreach(binding AP IP BLE UWB)
+        string(TOLOWER ${binding} binding_lower)
+        set(profile_reg
+            "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-${binding_lower}/registries/${binding_lower}-profiles-v0.1.json")
+        if(EXISTS "${profile_reg}")
+            target_compile_definitions(mcl_sdk_test_transport_registry PRIVATE
+                "MCL_${binding}_PROFILE_REGISTRY_PATH=\"${profile_reg}\"")
         endif()
     endforeach()
     set_target_properties(mcl_sdk_test_transport_registry PROPERTIES

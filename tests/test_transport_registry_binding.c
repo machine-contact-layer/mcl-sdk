@@ -55,6 +55,7 @@
 #define MAX_REGISTRY_BYTES 16384
 
 static char g_registry[MAX_REGISTRY_BYTES];
+static int g_checks = 0;
 
 static void load_registry(const char *path)
 {
@@ -132,6 +133,56 @@ static int registry_id_for(const char *name)
     return value;
 }
 
+/*
+ * Each binding declares its own transport_id at the top of its profile
+ * registry. That is a second place the assignment is written down, so it is a
+ * second place it can drift. Checked here for the same reason as the headers.
+ */
+static void check_profile_registry(const char *path, const char *name, int expected_id)
+{
+    char buf[MAX_REGISTRY_BYTES];
+    FILE *f = fopen(path, "rb");
+    const char *hit;
+    int value = 0;
+    size_t n;
+
+    if (f == NULL) {
+        fprintf(stderr, "FAIL: cannot open profile registry %s\n", path);
+        exit(1);
+    }
+    n = fread(buf, 1u, sizeof(buf) - 1u, f);
+    fclose(f);
+    if (n == 0u || n >= sizeof(buf) - 1u) {
+        fprintf(stderr, "FAIL: %s unreadable or too large\n", path);
+        exit(1);
+    }
+    buf[n] = '\0';
+
+    hit = strstr(buf, "\"transport_id\"");
+    if (hit == NULL) {
+        fprintf(stderr, "FAIL: %s declares no transport_id\n", path);
+        exit(1);
+    }
+    hit += strlen("\"transport_id\"");
+    while (*hit == ' ' || *hit == ':') { ++hit; }
+    if (*hit < '0' || *hit > '9') {
+        fprintf(stderr, "FAIL: %s transport_id is not a number\n", path);
+        exit(1);
+    }
+    while (*hit >= '0' && *hit <= '9') {
+        value = (value * 10) + (*hit - '0');
+        ++hit;
+    }
+
+    ++g_checks;
+    if (value != expected_id) {
+        fprintf(stderr, "FAIL: %s declares transport_id %d, registry says %d\n",
+                path, value, expected_id);
+        exit(1);
+    }
+    printf("%-9s profile registry declares transport %d, matching\n", name, value);
+}
+
 int main(void)
 {
     int checked = 0;
@@ -175,6 +226,20 @@ int main(void)
     ++checked;
 #endif
 
-    printf("PASS: transport registry agrees with %d binding header(s)\n", checked);
+#if defined(MCL_AP_PROFILE_REGISTRY_PATH)
+    check_profile_registry(MCL_AP_PROFILE_REGISTRY_PATH, "mcl-ap", registry_id_for("MCL_AP"));
+#endif
+#if defined(MCL_IP_PROFILE_REGISTRY_PATH)
+    check_profile_registry(MCL_IP_PROFILE_REGISTRY_PATH, "mcl-ip", registry_id_for("MCL_IP"));
+#endif
+#if defined(MCL_BLE_PROFILE_REGISTRY_PATH)
+    check_profile_registry(MCL_BLE_PROFILE_REGISTRY_PATH, "mcl-ble", registry_id_for("MCL_BLE"));
+#endif
+#if defined(MCL_UWB_PROFILE_REGISTRY_PATH)
+    check_profile_registry(MCL_UWB_PROFILE_REGISTRY_PATH, "mcl-uwb", registry_id_for("MCL_UWB"));
+#endif
+
+    printf("PASS: transport registry agrees with %d binding header(s) "
+           "and %d profile registry/registries\n", checked, g_checks);
     return 0;
 }
