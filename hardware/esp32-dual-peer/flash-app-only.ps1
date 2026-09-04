@@ -16,7 +16,7 @@
 param(
     [string]$PortName = 'COM3',
     [string]$Image = '',
-    [string]$BackupImage = 'C:\Users\marsm\Downloads\MCL_DFR1154_BACKUP_20260902\dfr1154-factory-app-before-mcl.bin',
+    [string]$BackupImage = (Join-Path $env:USERPROFILE 'Downloads\MCL_DFR1154_BACKUP_20260902\dfr1154-factory-app-before-mcl.bin'),
     [string]$EsptoolPath = 'esptool',
     [int]$Baud = 921600
 )
