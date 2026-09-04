@@ -1,0 +1,18 @@
+MCL — Machine Contact Layer
+Copyright 2026 The MCL Project
+
+This product includes software developed by the MCL Project.
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+This repository contains no third-party code. It has no dependencies, no
+vendored source, and nothing to attribute beyond the project's own work.
+That claim is verified mechanically on every gate run by
+mcl-core/tools/check-provenance.sh rather than merely asserted here.
+
+Binary artifacts in this repository, where present, are recorded experimental
+evidence — audio captures and instrument logs produced by the project on its
+own hardware. Each sits under an evidence directory whose README states the
+rig that produced it. Historical evidence is never edited or re-licensed.
+
+Licensing, IPR position and contribution terms: mcl-core/LICENSING.md
