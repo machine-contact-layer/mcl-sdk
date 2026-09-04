@@ -51,7 +51,11 @@ static int tests_failed = 0;
 #define ENDPOINT_A 0xD00D0001u
 #define ENDPOINT_B 0xD00D0002u
 
-#define PROFILE 192u   /* Experimental Use; no Stable profile exists yet. */
+/* IP-DATAGRAM, the Standards Action assignment. Isolation is not a property
+   of the profile, but this suite carries the value a deployment carries: a
+   test that only ever exercises an experimental value is not exercising the
+   bytes anyone will send. */
+#define PROFILE 1u
 
 static const uint8_t CHALLENGE_A[MCL_CONTACT_CHALLENGE_SIZE] =
     {0x01u, 0x02u, 0x03u, 0x04u, 0x05u, 0x06u, 0x07u, 0x08u};
