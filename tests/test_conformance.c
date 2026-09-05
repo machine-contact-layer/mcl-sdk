@@ -72,15 +72,21 @@ static void test_stranger_is_unclaimable(void)
     mcl_build_capabilities_t c;
     mcl_conformance_report_t r;
 
-    printf("[conformance] Stranger-Contact 1 is unclaimable by anyone\n");
+    printf("[conformance] Stranger-Contact 1: claimable, with a caveat\n");
 
     /*
-     * The load-bearing test. A builder asserts EVERY stranger-contact
-     * capability -- as an implementation with a real acoustic bootstrap
-     * eventually will -- and the claim must still be refused, because
-     * AP-BOOTSTRAP-1 does not exist. A builder cannot set a flag to make a
-     * profile exist, and a library that let them would help them ship a false
-     * claim.
+     * The load-bearing test, and it changed on 2026-09-06 when
+     * mcl-ap/spec/ap-bootstrap-1.md landed.
+     *
+     * Until then a fully asserted stranger build was refused outright, because
+     * the missing thing was not in the builder's code -- it was in MCL, and a
+     * builder cannot set a flag to make a profile exist.
+     *
+     * The profile now exists and is CANDIDATE. Refusing the claim would now be
+     * the opposite error: the specification a builder needs is in the tree and
+     * implementable. So the claim STANDS AND CARRIES A CAVEAT, and the test
+     * asserts both halves -- a claim granted without the caveat would be an
+     * overclaim, and a claim refused would be an underclaim.
      */
     base_build(&c);
     c.bootstrap_profile = 1u;
@@ -89,14 +95,35 @@ static void test_stranger_is_unclaimable(void)
     c.no_common_bearer_report = 1u;
 
     (void)mcl_conformance_evaluate(&c, MCL_CONFORMANCE_STRANGER_CONTACT_1, &r);
-    check(r.claim_stands == 0u,
-          "a fully asserted stranger build STILL cannot claim the layer");
-    check((r.unmet & MCL_CONFORMANCE_UNMET_BOOTSTRAP_UNSPECIFIED) != 0u,
-          "and the reason names MCL, not the build");
+    check(r.claim_stands == 1u,
+          "a fully asserted stranger build can now claim the layer");
+    check((r.unmet & MCL_CONFORMANCE_UNMET_BOOTSTRAP_UNSPECIFIED) == 0u,
+          "the profile exists, so MCL is no longer the thing missing");
+    check((r.caveats & MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE) != 0u,
+          "and the claim carries the Candidate caveat rather than sounding frozen");
     check((r.unmet & MCL_CONFORMANCE_UNMET_BOOTSTRAP) == 0u,
           "the build's own bootstrap assertion is not second-guessed");
-    check(r.attainable == MCL_CONFORMANCE_BASE_1,
-          "so the highest honest claim stays Base 1");
+    check(r.attainable == MCL_CONFORMANCE_STRANGER_CONTACT_1,
+          "so the highest honest claim is now Stranger-Contact 1");
+
+    /*
+     * A build that does NOT assert the bootstrap capabilities is still refused,
+     * on its own merits. The profile existing does not grant anybody the layer.
+     */
+    base_build(&c);
+    (void)mcl_conformance_evaluate(&c, MCL_CONFORMANCE_STRANGER_CONTACT_1, &r);
+    check(r.claim_stands == 0u,
+          "a build without the bootstrap capabilities is still refused");
+    check((r.unmet & MCL_CONFORMANCE_UNMET_BOOTSTRAP) != 0u,
+          "and now the reason names the BUILD, which is the honest one");
+    check(r.caveats == 0u,
+          "a refused claim carries no caveat: there is no claim to qualify");
+
+    base_build(&c);
+    c.bootstrap_profile = 1u;
+    c.bootstrap_offer_accept = 1u;
+    c.shared_medium = 1u;
+    c.no_common_bearer_report = 1u;
 
     /* Secure-Stranger is refused for its own reason as well as inheriting. */
     c.security_profile_id = 1u;

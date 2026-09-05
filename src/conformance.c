@@ -17,8 +17,26 @@
  * this implementation. Each becomes 0 on the day its specification lands, and
  * nothing else in this file has to change.
  */
-#define MCL_AP_BOOTSTRAP_1_EXISTS 0
+#define MCL_AP_BOOTSTRAP_1_EXISTS 1   /* mcl-ap/spec/ap-bootstrap-1.md, 2026-09-06 */
 #define MCL_SECURITY_PROFILE_EXISTS 0
+
+/*
+ * AP-BOOTSTRAP-1 now exists and is CANDIDATE, not Stable, and the difference is
+ * reported rather than rounded away.
+ *
+ * Every measurement of its waveform comes from one transmitter class, and there
+ * is direct evidence the choice does not travel -- a laptop speaker with a
+ * measured notch at one of the two tones recovered 1 of 3 where the reference
+ * transmitter recovers 9 of 15. Section 11 of the profile lists what promotion
+ * needs.
+ *
+ * So a build may now claim MCL Stranger-Contact 1, and the claim carries
+ * MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE. Rounding a Candidate bootstrap up
+ * to a Stable-sounding claim is exactly the overclaim this file exists to stop;
+ * refusing the claim outright would now be the opposite error, since the
+ * specification a builder needs is in the tree and implementable.
+ */
+#define MCL_AP_BOOTSTRAP_1_STABLE 0
 
 static uint32_t base_unmet(const mcl_build_capabilities_t *c)
 {
@@ -120,6 +138,18 @@ mcl_sdk_status_t mcl_conformance_evaluate(
     }
 
     out->claim_stands = (out->unmet == 0u) ? 1u : 0u;
+
+    /*
+     * Caveats attach to a STANDING claim. Reported for any layer that rests on
+     * the acoustic bootstrap, because that is the layer whose guarantee is
+     * weaker than its name while AP-BOOTSTRAP-1 is Candidate.
+     */
+#if MCL_AP_BOOTSTRAP_1_EXISTS && !MCL_AP_BOOTSTRAP_1_STABLE
+    if (out->claim_stands &&
+        requested >= MCL_CONFORMANCE_STRANGER_CONTACT_1) {
+        out->caveats |= MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE;
+    }
+#endif
     return MCL_SDK_OK;
 }
 
@@ -204,13 +234,28 @@ const char *mcl_conformance_unmet_name(uint32_t single_bit)
     case MCL_CONFORMANCE_UNMET_SECURITY_PROFILE:
         return "no security profile implemented";
     case MCL_CONFORMANCE_UNMET_BOOTSTRAP_UNSPECIFIED:
-        return "AP-BOOTSTRAP-1 is not specified yet: this layer is unclaimable "
-               "by anyone, and that is a fact about MCL rather than this build";
+        /* Retained, and no longer set: AP-BOOTSTRAP-1 landed 2026-09-06. A
+           caller holding a report produced by an older library still gets the
+           right sentence for the bit it is holding. */
+        return "AP-BOOTSTRAP-1 was not specified when this report was produced: "
+               "the layer was unclaimable by anyone, which was a fact about MCL "
+               "rather than about the build";
     case MCL_CONFORMANCE_UNMET_SECURITY_UNSPECIFIED:
         return "no named security profile exists yet: this layer is unclaimable "
                "by anyone";
     default:
         return "unknown requirement";
+    }
+}
+
+const char *mcl_conformance_caveat_name(uint32_t single_bit)
+{
+    switch (single_bit) {
+    case MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE:
+        return "the bootstrap profile this layer rests on is Candidate, not "
+               "Stable: implementable, and not frozen";
+    default:
+        return "unknown caveat";
     }
 }
 

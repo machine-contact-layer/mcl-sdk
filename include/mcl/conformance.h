@@ -111,11 +111,41 @@ enum {
      * bake-off selected, clean-room implemented and assigned a Standards Action
      * identifier, NO implementation may claim the layer. A builder cannot opt
      * out of this by setting a flag, because the thing missing is not in their
-     * build -- it is in MCL. This constant disappears when the profile lands.
+     * build -- it is in MCL.
+     *
+     * NO LONGER SET AS OF 2026-09-06: `mcl-ap/spec/ap-bootstrap-1.md` exists.
+     * The bit is retained rather than renumbered, because a caller compiled
+     * against the earlier header must not silently start reading a different
+     * reason from the same value.
      */
     MCL_CONFORMANCE_UNMET_BOOTSTRAP_UNSPECIFIED = 0x0800u,
     /* Same shape, for the layer above: no named security profile exists. */
     MCL_CONFORMANCE_UNMET_SECURITY_UNSPECIFIED  = 0x1000u
+};
+
+/* ------------------------------------------------------------- caveats */
+
+/*
+ * A caveat is not an unmet requirement. The claim STANDS and something about it
+ * is weaker than the layer name suggests, so it travels with the claim instead
+ * of blocking it.
+ *
+ * The distinction earns its place: refusing a claim whose specification is in
+ * the tree and implementable would be as wrong as granting one that sounds
+ * frozen and is not.
+ */
+enum {
+    /*
+     * AP-BOOTSTRAP-1 exists and is CANDIDATE, not Stable.
+     *
+     * Every measurement of its waveform comes from one transmitter class, and
+     * there is direct evidence the choice does not travel: a laptop speaker
+     * with a measured notch at one of the two tones recovered 1 of 3 where the
+     * reference transmitter recovers 9 of 15. §11 of the profile lists what
+     * promotion requires. A deployment may implement it and MUST NOT describe
+     * it as frozen.
+     */
+    MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE = 0x0001u
 };
 
 typedef struct {
@@ -125,6 +155,12 @@ typedef struct {
     mcl_conformance_layer_t requested;
     /* Why `requested` was not attainable. Zero when the claim stands. */
     uint32_t unmet;
+    /*
+     * Weaknesses that travel WITH a standing claim rather than blocking it.
+     * A caller that reports `claim_stands` without reporting these is
+     * overstating what it was told.
+     */
+    uint32_t caveats;
     /* 1 when requested <= attainable. */
     uint8_t  claim_stands;
 } mcl_conformance_report_t;
@@ -191,6 +227,10 @@ mcl_sdk_status_t mcl_deployment_check(
 const char *mcl_conformance_layer_name(mcl_conformance_layer_t layer);
 const char *mcl_conformance_unmet_name(uint32_t single_bit);
 const char *mcl_deployment_unmet_name(uint32_t single_bit);
+
+/* Names one caveat bit. A caller reporting `claim_stands` without reporting
+   these is overstating what it was told. */
+const char *mcl_conformance_caveat_name(uint32_t single_bit);
 
 #ifdef __cplusplus
 }
