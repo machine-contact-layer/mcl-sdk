@@ -4,6 +4,8 @@ Developer-facing low-level reference SDK for the **Machine Contact Layer**.
 
 The primary reference SDK is a portable C99 implementation designed to run from resource-constrained microcontrollers through embedded systems and hosted applications without changing the protocol contract.
 
+**Integrating MCL into a product? Read [`BUILDER_GUIDE.md`](BUILDER_GUIDE.md) first.** It walks the ten questions a builder actually asks and is explicit about what MCL does not do yet — including that `MCL Stranger-Contact 1` is not claimable by anyone today.
+
 ## Implementation Contract
 
 The reference stack targets a conservative **C99** subset:
