@@ -1,0 +1,29 @@
+# Line endings belong to the release, not to the checkout.
+#
+# The v1.0.0 bundle records a SHA-256 for every artifact, and gate 31 verifies
+# that the bundle alone reconstructs what it claims. Those digests are taken
+# over the file as it sits in the working tree, so a clone that rewrites LF to
+# CRLF -- the default for Git for Windows with core.autocrlf=true -- fails them
+# on a tree where nothing has changed. Verified by converting one artifact and
+# watching RECONSTRUCTION FAILED.
+#
+# Two release gates have already been repaired for reading a carriage return as
+# content: build-spec-index.sh took the CR as part of a status word, and
+# api-baseline.sh read it as part of every symbol name and reported the entire
+# public API as deleted. Stripping at each reader treats the symptom one site at
+# a time. This removes the cause: every text file is LF in every working tree on
+# every platform, so no gate and no checksum can depend on which operating
+# system ran the clone.
+* text=auto eol=lf
+
+# Captures are measurements. No filter goes near one.
+*.wav binary
+
+# Serial logs are deliberately NOT marked binary, and the reason should be on
+# the record rather than inferred. A board's terminal frames its lines with
+# CRLF, but the measurement is the text those lines carry, not the framing --
+# and every such log in these repositories was already stored LF before this
+# file existed. Marking them binary now would not recover a carriage return
+# that was never committed; it would only make the archived record disagree
+# with itself. The measurements that must survive byte-for-byte are the
+# captures, and those are binary above.
