@@ -78,6 +78,26 @@ typedef struct {
        reproducible and a collision result is not luck. */
     uint32_t seed[MAX_NODES];
     int random_enabled;
+    /*
+     * DESTROY THE FIRST CONTROL OF ONE KIND.
+     *
+     * The handoff controls are idempotent by construction and the Link layer
+     * proved it over a hundred and four switches. The coordinator sent each of
+     * them exactly once, so it inherited none of that: a single lost
+     * PATH_RESPONSE left the controller waiting for ever with the recovery
+     * machinery untouched.
+     *
+     * `drop_op` names a handoff operation whose FIRST occurrence on the
+     * candidate bearer is destroyed. Only the first: the point is that the
+     * retransmission of the SAME control recovers, not that the protocol
+     * survives an indefinitely broken link.
+     */
+    int drop_op;          /* -1 for none, else mcl_handoff_op_t */
+    unsigned dropped;
+    /* Force every node into the same backoff slot, so a collision is certain
+       rather than probable. A slot scheme is only interesting if the case it
+       is designed for can actually be produced. */
+    int force_same_slot;
 } room_t;
 
 typedef struct {
@@ -109,6 +129,25 @@ static int32_t room_tx(void *user, uint8_t transport_id,
     memcpy(t->bytes, data, size);
     t->size = size;
     t->from = ctx->index;
+    /*
+     * The loss filter sits at the transmitter, before airtime is modelled, so
+     * a destroyed control occupies no air and cannot collide with anything.
+     * That is the honest model of a frame the far end never decoded.
+     */
+    if (room->drop_op >= 0 && transport_id != room->shared_transport &&
+        size > 0u) {
+        /* A handoff control's operation byte, located the same way
+           mcl_handoff_decode locates it: after the Link frame header. */
+        size_t k;
+        for (k = 0u; k + 1u < size; ++k) {
+            if (data[k] == (uint8_t)room->drop_op) {
+                room->dropped++;
+                room->drop_op = -1;         /* first occurrence only */
+                room->count--;              /* un-record this transmission */
+                return 0;
+            }
+        }
+    }
     t->start_ms = room->now;
     /* A point-to-point candidate bearer is effectively instantaneous here; the
        shared bearer costs real airtime. */
@@ -146,7 +185,26 @@ static int room_medium_busy(void *user)
         transmission_t *t = &room->tx[i];
         if (t->delivered || t->transport_id != room->shared_transport) continue;
         if (t->from == ctx->index) continue;      /* our own emitter */
-        if (t->start_ms <= room->now && room->now < t->end_ms) {
+        /*
+         * STRICTLY LESS THAN. A TRANSMISSION BEGINNING NOW IS NOT YET AUDIBLE.
+         *
+         * The nodes are polled one after another at a single simulated
+         * instant. With `<=`, whoever was polled first began transmitting and
+         * was instantly detectable, so everyone polled afterwards at that same
+         * instant sensed a busy medium and deferred -- and two machines that
+         * had chosen the SAME slot never collided.
+         *
+         * That is not physics. If A and B pick the same slot, both sense the
+         * medium before either has put energy into it, both find it idle, and
+         * both transmit. The simulator was quietly guaranteeing the outcome
+         * the slot scheme is only supposed to make unlikely, and hiding the
+         * residual collision probability it has to tolerate.
+         *
+         * room_tx() still treats same-instant starts as overlapping, so the
+         * collision that follows is real. Self-sensing below keeps `<=`: a
+         * node does know it is transmitting at the instant it starts.
+         */
+        if (t->start_ms < room->now && room->now < t->end_ms) {
             return 1;
         }
     }
@@ -177,6 +235,24 @@ static int room_random(void *user, uint8_t *out, size_t size)
 
     if (!room->random_enabled) {
         return -1;
+    }
+    if (room->force_same_slot > 0) {
+        /*
+         * Every node draws the same bytes, so every node computes the same
+         * backoff slot and the collision the scheme exists to make unlikely
+         * becomes certain. That is the only way to check it is SURVIVED rather
+         * than merely improbable.
+         *
+         * It is a countdown, not a mode. Forcing every draw for ever makes the
+         * randomness permanently degenerate, the nodes collide on every round
+         * until the run ends, and the test can only assert the collision -- not
+         * the recovery, which is the more interesting half.
+         */
+        room->force_same_slot--;
+        for (i = 0u; i < size; ++i) {
+            out[i] = 0x40u;
+        }
+        return 0;
     }
     for (i = 0u; i < size; ++i) {
         room->seed[ctx->index] =
@@ -209,14 +285,61 @@ static void room_advance(room_t *room, uint32_t step_ms)
     }
 }
 
+/*
+ * THE BUILDER'S SIDE OF THE BOUNDARY, MODELLED.
+ *
+ * The coordinator now stops twice and waits for the integrator: once when the
+ * bearer is agreed, so the candidate can be opened, and once when reachability
+ * is proven, so local policy can admit or refuse. A test harness that did not
+ * answer those would stall for ever, and one that answered them inside the
+ * coordinator would be testing a coordinator nobody ships.
+ *
+ * So the harness plays the builder: it opens the candidate and it admits. The
+ * two flags let a test withhold either one, which is how the policy-refusal
+ * case and the candidate-not-open case are exercised.
+ */
+static int g_auto_ready = 1;
+static int g_auto_admit = 1;
+static unsigned g_policy_asked;
+
 static void tick(room_t *room, mcl_rdv_event_t *events, uint32_t step_ms)
 {
     unsigned j;
 
     for (j = 0u; j < g_node_count; ++j) {
         (void)mcl_rdv_poll(g_nodes[j], &events[j]);
+        switch (events[j].kind) {
+        case MCL_RDV_EVENT_BEARER_AGREED:
+            if (g_auto_ready) {
+                (void)mcl_rdv_candidate_ready(g_nodes[j]);
+            }
+            break;
+        case MCL_RDV_EVENT_POLICY_REQUIRED:
+            g_policy_asked++;
+            if (g_auto_admit) {
+                (void)mcl_rdv_admit(g_nodes[j]);
+            } else {
+                (void)mcl_rdv_refuse(g_nodes[j]);
+            }
+            break;
+        default:
+            break;
+        }
     }
     room_advance(room, step_ms);
+}
+
+/*
+ * Every test below drives the two builder boundaries through tick(). A test
+ * that needs to withhold one sets g_auto_ready or g_auto_admit and restores it
+ * afterwards; leaving one clear would silently disable migration for every
+ * test that follows.
+ */
+static void reset_harness(void)
+{
+    g_auto_ready = 1;
+    g_auto_admit = 1;
+    g_policy_asked = 0u;
 }
 
 static void base_config(mcl_rdv_config_t *cfg, uint32_t source_ref,
@@ -281,6 +404,7 @@ static void room_init(room_t *room)
     memset(room, 0, sizeof(*room));
     room->shared_transport = 1u;
     room->random_enabled = 1;
+    room->drop_op = -1;
     for (i = 0u; i < MAX_NODES; ++i) {
         room->seed[i] = 0x1234567u + i * 7919u;
     }
@@ -521,7 +645,9 @@ static void test_contention_recovers(void)
     mcl_node_t node[3];
     room_t room;
     peer_ctx_t ctx[3];
-    unsigned i;
+    unsigned i, k;
+    unsigned migrated_nodes = 0u, validated = 0u;
+    uint32_t migrated_session = 0u;
     static const uint32_t refs[3] = { 0x51515151u, 0x52525252u, 0x53535353u };
 
     printf("[rendezvous] three machines contending on one medium\n");
@@ -548,6 +674,13 @@ static void test_contention_recovers(void)
     g_nodes[0] = &a; g_nodes[1] = &b; g_nodes[2] = &c; g_node_count = 3u;
     for (i = 0u; i < 3000u; ++i) {
         tick(&room, ev, 10u);
+        for (k = 0u; k < 3u; ++k) {
+            if (ev[k].kind == MCL_RDV_EVENT_CONTACT_MIGRATED) {
+                migrated_nodes++;
+                migrated_session = ev[k].session_ref;
+            }
+            if (ev[k].kind == MCL_RDV_EVENT_CANDIDATE_VALIDATED) validated++;
+        }
     }
 
     printf("       (%u delivered, %u lost to overlap)\n",
@@ -559,6 +692,21 @@ static void test_contention_recovers(void)
      * PRESENCE overlapped by construction, so a majority-collision outcome is
      * the signature of a scheme that cannot work at all.
      */
+    /*
+     * "SOME TRAFFIC GOT THROUGH" IS NOT RENDEZVOUS.
+     *
+     * delivered > 0 and delivered > collisions can both hold while no pair
+     * ever agrees on anything: they are statements about the medium, not
+     * about the protocol running on it. Three machines starting together must
+     * end with a coherent transaction -- a validated candidate, a migrated
+     * contact, and exactly one session for it.
+     */
+    check(validated > 0u,
+          "a candidate path is validated despite the contention");
+    check(migrated_nodes >= 2u,
+          "a PAIR migrates -- both ends of one contact, not one hopeful end");
+    check(migrated_session != 0u,
+          "the migrated contact carries a real session reference");
     check(room.delivered > room.collisions,
           "and most transmissions survive rather than most colliding");
 }
@@ -933,6 +1081,227 @@ static void test_backoff_slotting(void)
     check(distinct >= 4u, "successive draws vary across the slot space");
 }
 
+
+/*
+ * source_ref = 0 IS LEGAL, AND IT USED TO MANUFACTURE AN ILLEGAL SESSION.
+ *
+ * The acceptor copied source_ref into TRANSPORT_ACCEPT.session_ref. Zero is
+ * the reserved "no session" value, so a node configured with source_ref 0 --
+ * which nothing forbids -- offered a session of zero, mcl_contact_agree
+ * refused it, and the coordinator discarded the refusal and carried on.
+ */
+static void test_zero_source_ref(void)
+{
+    room_t room;
+    peer_ctx_t ca_ctx, cb_ctx;
+    mcl_rdv_t a, b;
+    mcl_rdv_config_t ca, cb;
+    mcl_rdv_platform_t pa, pb;
+    mcl_node_t na, nb;
+    mcl_rdv_event_t ev[MAX_NODES];
+    unsigned i;
+    int migrated = 0;
+    uint32_t seen_session = 0u;
+
+    printf("[rendezvous] source_ref zero still yields a legal session\n");
+    reset_harness();
+    room_init(&room);
+    ca_ctx.room = &room; ca_ctx.index = 0u;
+    cb_ctx.room = &room; cb_ctx.index = 1u;
+    base_platform(&pa, &ca_ctx);
+    base_platform(&pb, &cb_ctx);
+    base_node(&na, 0u, MCL_CONTACT_ROLE_INITIATOR, &ca_ctx);
+    base_node(&nb, 0u, MCL_CONTACT_ROLE_RESPONDER, &cb_ctx);
+
+    /* BOTH sides at zero: nothing in MCL says a source_ref must be non-zero,
+       and two builders that both left it unset is the realistic case. */
+    base_config(&ca, 0u, MCL_CONTACT_ROLE_INITIATOR);
+    base_config(&cb, 0u, MCL_CONTACT_ROLE_RESPONDER);
+    ca.bearer_endpoint_token[0] = 0xAAAA0001u;
+    cb.bearer_endpoint_token[0] = 0xBBBB0001u;
+
+    check(mcl_rdv_init(&a, &ca, &pa, &na) == MCL_RDV_OK, "A initialises at source_ref 0");
+    check(mcl_rdv_init(&b, &cb, &pb, &nb) == MCL_RDV_OK, "B initialises at source_ref 0");
+    (void)mcl_rdv_start(&a);
+    (void)mcl_rdv_start(&b);
+
+    g_room = &room; g_nodes[0] = &a; g_nodes[1] = &b; g_node_count = 2u;
+    for (i = 0u; i < 4000u; ++i) {
+        tick(&room, ev, 10u);
+        if (ev[0].session_ref != 0u) seen_session = ev[0].session_ref;
+        if (ev[1].session_ref != 0u) seen_session = ev[1].session_ref;
+        if (ev[0].kind == MCL_RDV_EVENT_CONTACT_MIGRATED ||
+            ev[1].kind == MCL_RDV_EVENT_CONTACT_MIGRATED) migrated = 1;
+    }
+    check(seen_session != 0u, "the session reference is non-zero");
+    check(seen_session != ca.source_ref,
+          "the session reference is not a copy of source_ref");
+    check(migrated, "a contact between two zero-source_ref peers still migrates");
+}
+
+/*
+ * EACH HANDOFF CONTROL, DESTROYED ONCE.
+ *
+ * The Link layer's controls are idempotent and that was demonstrated
+ * independently. The coordinator sent each exactly once and so inherited none
+ * of it. Every one of these four cases hung before retransmission existed.
+ */
+static void run_with_drop(int op, const char *what)
+{
+    room_t room;
+    peer_ctx_t ca_ctx, cb_ctx;
+    mcl_rdv_t a, b;
+    mcl_rdv_config_t ca, cb;
+    mcl_rdv_platform_t pa, pb;
+    mcl_node_t na, nb;
+    mcl_rdv_event_t ev[MAX_NODES];
+    unsigned i;
+    int migrated = 0;
+
+    reset_harness();
+    room_init(&room);
+    room.drop_op = op;
+    ca_ctx.room = &room; ca_ctx.index = 0u;
+    cb_ctx.room = &room; cb_ctx.index = 1u;
+    base_platform(&pa, &ca_ctx);
+    base_platform(&pb, &cb_ctx);
+    base_node(&na, 0x11111111u, MCL_CONTACT_ROLE_INITIATOR, &ca_ctx);
+    base_node(&nb, 0x22222222u, MCL_CONTACT_ROLE_RESPONDER, &cb_ctx);
+    base_config(&ca, 0x11111111u, MCL_CONTACT_ROLE_INITIATOR);
+    base_config(&cb, 0x22222222u, MCL_CONTACT_ROLE_RESPONDER);
+    ca.bearer_endpoint_token[0] = 0xAAAA0001u;
+    cb.bearer_endpoint_token[0] = 0xBBBB0001u;
+    (void)mcl_rdv_init(&a, &ca, &pa, &na);
+    (void)mcl_rdv_init(&b, &cb, &pb, &nb);
+    (void)mcl_rdv_start(&a);
+    (void)mcl_rdv_start(&b);
+
+    g_room = &room; g_nodes[0] = &a; g_nodes[1] = &b; g_node_count = 2u;
+    for (i = 0u; i < 8000u; ++i) {
+        tick(&room, ev, 10u);
+        if (ev[0].kind == MCL_RDV_EVENT_CONTACT_MIGRATED ||
+            ev[1].kind == MCL_RDV_EVENT_CONTACT_MIGRATED) migrated = 1;
+    }
+    check(room.dropped == 1u, "the control was actually destroyed");
+    check(migrated, what);
+}
+
+static void test_lost_handoff_controls(void)
+{
+    printf("[rendezvous] a lost handoff control is retransmitted\n");
+    run_with_drop(MCL_HANDOFF_OP_PATH_CHALLENGE,
+                  "a lost PATH_CHALLENGE still migrates");
+    run_with_drop(MCL_HANDOFF_OP_PATH_RESPONSE,
+                  "a lost PATH_RESPONSE still migrates");
+    run_with_drop(MCL_HANDOFF_OP_COMMIT,
+                  "a lost COMMIT still migrates");
+    run_with_drop(MCL_HANDOFF_OP_CONFIRM,
+                  "a lost CONFIRM still migrates");
+}
+
+/*
+ * POLICY REFUSAL IS CONFORMANT.
+ *
+ * Reception is not identity, is not authority and is not obligation. A node
+ * that hears a stranger, proves it is reachable and then declines to admit it
+ * has behaved correctly. The coordinator never asked: POLICY_REQUIRED was
+ * declared in the public API and no build emitted it.
+ */
+static void test_policy_refusal(void)
+{
+    room_t room;
+    peer_ctx_t ca_ctx, cb_ctx;
+    mcl_rdv_t a, b;
+    mcl_rdv_config_t ca, cb;
+    mcl_rdv_platform_t pa, pb;
+    mcl_node_t na, nb;
+    mcl_rdv_event_t ev[MAX_NODES];
+    unsigned i;
+    int migrated = 0, lost = 0;
+
+    printf("[rendezvous] local policy is asked, and a refusal is honoured\n");
+    reset_harness();
+    g_auto_admit = 0;                 /* refuse instead of admitting */
+    room_init(&room);
+    ca_ctx.room = &room; ca_ctx.index = 0u;
+    cb_ctx.room = &room; cb_ctx.index = 1u;
+    base_platform(&pa, &ca_ctx);
+    base_platform(&pb, &cb_ctx);
+    base_node(&na, 0x33333333u, MCL_CONTACT_ROLE_INITIATOR, &ca_ctx);
+    base_node(&nb, 0x44444444u, MCL_CONTACT_ROLE_RESPONDER, &cb_ctx);
+    base_config(&ca, 0x33333333u, MCL_CONTACT_ROLE_INITIATOR);
+    base_config(&cb, 0x44444444u, MCL_CONTACT_ROLE_RESPONDER);
+    ca.bearer_endpoint_token[0] = 0xAAAA0001u;
+    cb.bearer_endpoint_token[0] = 0xBBBB0001u;
+    (void)mcl_rdv_init(&a, &ca, &pa, &na);
+    (void)mcl_rdv_init(&b, &cb, &pb, &nb);
+    (void)mcl_rdv_start(&a);
+    (void)mcl_rdv_start(&b);
+
+    g_room = &room; g_nodes[0] = &a; g_nodes[1] = &b; g_node_count = 2u;
+    for (i = 0u; i < 4000u; ++i) {
+        tick(&room, ev, 10u);
+        if (ev[0].kind == MCL_RDV_EVENT_CONTACT_MIGRATED ||
+            ev[1].kind == MCL_RDV_EVENT_CONTACT_MIGRATED) migrated = 1;
+        if (ev[0].kind == MCL_RDV_EVENT_CONTACT_LOST ||
+            ev[1].kind == MCL_RDV_EVENT_CONTACT_LOST) lost = 1;
+    }
+    check(g_policy_asked > 0u, "local policy was asked before any commitment");
+    check(!migrated, "a refused peer does not migrate the contact");
+    check(lost, "and the refusal is reported rather than silent");
+    reset_harness();
+}
+
+/*
+ * THE SAME SLOT MUST COLLIDE.
+ *
+ * If forcing two machines into one 250 ms slot does not produce a collision,
+ * the simulator is being kind and every contention result it has ever
+ * produced is worth less than it looks.
+ */
+static void test_same_slot_collides(void)
+{
+    room_t room;
+    peer_ctx_t ctx[3];
+    mcl_rdv_t r[3];
+    mcl_rdv_config_t cfg[3];
+    mcl_rdv_platform_t plat[3];
+    mcl_node_t node[3];
+    mcl_rdv_event_t ev[MAX_NODES];
+    unsigned i;
+
+    printf("[rendezvous] a forced identical slot produces a real collision\n");
+    reset_harness();
+    room_init(&room);
+    room.force_same_slot = 6;   /* two rounds for each of the three nodes */
+
+    for (i = 0u; i < 3u; ++i) {
+        ctx[i].room = &room;
+        ctx[i].index = (uint8_t)i;
+        base_platform(&plat[i], &ctx[i]);
+        base_node(&node[i], 0x50000001u + i,
+                  i == 0u ? MCL_CONTACT_ROLE_INITIATOR
+                          : MCL_CONTACT_ROLE_RESPONDER, &ctx[i]);
+        base_config(&cfg[i], 0x50000001u + i,
+                    i == 0u ? MCL_CONTACT_ROLE_INITIATOR
+                            : MCL_CONTACT_ROLE_RESPONDER);
+        cfg[i].bearer_endpoint_token[0] = 0xC0DE0001u + i;
+        (void)mcl_rdv_init(&r[i], &cfg[i], &plat[i], &node[i]);
+        (void)mcl_rdv_start(&r[i]);
+        g_nodes[i] = &r[i];
+    }
+    g_room = &room;
+    g_node_count = 3u;
+
+    for (i = 0u; i < 3000u; ++i) {
+        tick(&room, ev, 10u);
+    }
+    check(room.collisions > 0u,
+          "three machines in one slot actually collide");
+    check(room.delivered > 0u,
+          "and the medium recovers once the slots diverge again");
+}
+
 int main(void)
 {
     printf("rendezvous coordinator\n");
@@ -948,6 +1317,10 @@ int main(void)
     test_garbage_refused();
     test_clock_wrap();
     test_backoff_slotting();
+    test_zero_source_ref();
+    test_lost_handoff_controls();
+    test_policy_refusal();
+    test_same_slot_collides();
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;

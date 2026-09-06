@@ -88,6 +88,11 @@ extern "C" {
    permits, and it keeps the config a fixed-size caller-owned struct. */
 #define MCL_RDV_MAX_BEARERS 16u
 
+/* Retransmissions of one handoff control before the contact is given up.
+   The controls are idempotent, so a retry is safe; an unbounded retry is not
+   a protocol, it is a stuck node that never reports. */
+#define MCL_RDV_MAX_HANDOFF_RETRIES 4u
+
 typedef enum {
     MCL_RDV_OK = 0,
     MCL_RDV_ERR_NULL = 1,
@@ -128,7 +133,32 @@ typedef enum {
     MCL_RDV_STATE_VALIDATING = 5,
     MCL_RDV_STATE_MIGRATED = 6,
     MCL_RDV_STATE_EXHAUSTED = 7,    /* every mandated bearer was tried */
-    MCL_RDV_STATE_CLOSED = 8
+    MCL_RDV_STATE_CLOSED = 8,
+    /*
+     * The bearer is agreed and the CALLER now has to make the candidate
+     * usable: resolve the peer's endpoint token, open the socket or the GATT
+     * connection, apply local admission. The coordinator cannot do any of that
+     * -- it has no idea what a socket is on this machine -- so it stops here
+     * and waits for mcl_rdv_candidate_ready().
+     *
+     * Without this state the coordinator sent PATH_CHALLENGE on a bearer the
+     * integrator had not been given a chance to open. The simulator did not
+     * notice because its candidate bearer was routable before anybody asked.
+     */
+    MCL_RDV_STATE_CANDIDATE_PENDING = 9,
+    /*
+     * Reachability is proven and the next step is not the SDK's to take.
+     * MCL_RDV_EVENT_POLICY_REQUIRED has been raised and the coordinator is
+     * waiting for mcl_rdv_admit() or mcl_rdv_refuse().
+     *
+     * This sits before the first IRREVOCABLE act on each side -- COMMIT for
+     * the controller, PATH_RESPONSE for the acceptor -- because a policy
+     * refusal after commitment is not a refusal, it is a broken contact.
+     */
+    MCL_RDV_STATE_ADMITTING = 10,
+    /* COMMIT has been sent and CONFIRM is outstanding. COMMIT is irrevocable:
+       this state can only go forward or be retried, never back. */
+    MCL_RDV_STATE_COMMITTING = 11
 } mcl_rdv_state_t;
 
 typedef struct {
@@ -137,6 +167,32 @@ typedef struct {
     uint8_t profile_id;
     uint32_t peer_ref;       /* correlation only; never identity */
     uint32_t migration_ref;
+    /*
+     * The peer's endpoint token for this bearer, as it arrived in
+     * TRANSPORT_OFFER or TRANSPORT_ACCEPT.
+     *
+     * This is the field the integrator actually needs on BEARER_AGREED, and
+     * the event did not carry it: transport, profile and refs said WHICH
+     * bearer was agreed but nothing about where to reach the peer on it. It is
+     * opaque here -- the coordinator does not interpret it, and its meaning is
+     * defined per transport by that transport's endpoint registry.
+     *
+     * IT IS ZERO ON THE OFFERING SIDE, AND THAT IS NOT A BUG.
+     *
+     * TRANSPORT_OFFER carries an endpoint_token; TRANSPORT_ACCEPT does not.
+     * So the accepting peer learns where to reach the offerer, and the offerer
+     * learns nothing about where to reach the acceptor. The field cannot be
+     * added at major 1 -- TRANSPORT_ACCEPT is 16 bytes and that size is fixed
+     * for the major -- so the asymmetry is reported rather than papered over.
+     *
+     * An offering integrator must resolve the peer's candidate address by
+     * other means, normally the source address its own transport reports for
+     * the acceptance. mcl_rdv_candidate_ready() is where it asserts that it
+     * has, and nothing is emitted on the candidate before that call.
+     */
+    uint32_t peer_endpoint_token;
+    /* Contact-lifetime session, non-zero once agreed. Never a source_ref. */
+    uint32_t session_ref;
 } mcl_rdv_event_t;
 
 /*
@@ -311,7 +367,23 @@ typedef struct {
     uint8_t offered_transport;
     uint8_t offered_profile;
     uint32_t session_ref;
+    uint32_t peer_endpoint_token; /* where to reach the peer on the candidate */
     uint8_t challenge[MCL_CONTACT_CHALLENGE_SIZE];
+    /* The acceptor holds the challenge it has been asked to answer while
+       local policy decides, because answering is its point of no return. */
+    uint8_t pending_challenge[MCL_CONTACT_CHALLENGE_SIZE];
+    uint8_t has_pending_challenge;
+    /* Retransmission of the SAME control, never a fresh transaction. The
+       handoff protocol is idempotent by construction and this is what
+       exercises it; a new challenge or a new migration_ref on a retry would
+       be a second transaction racing the first. */
+    uint8_t retries;
+    /* Local policy has admitted this peer. Latched for the contact: the
+       admission question is asked once, not at every retransmission. */
+    uint8_t admitted;
+    /* POLICY_REQUIRED has been raised for this contact. Asked once, not once
+       per retransmission: a peer that resent a challenge is not a new one. */
+    uint8_t policy_raised;
     uint8_t is_controller;       /* we sent the offer that was accepted */
     uint32_t deadline_ms;        /* next scheduled action */
     uint32_t last_event_ms;
@@ -345,6 +417,37 @@ mcl_rdv_status_t mcl_rdv_poll(mcl_rdv_t *rdv, mcl_rdv_event_t *out);
  * REFUSED AND NOT ACTED ON, and refusing is not an error: a bootstrap bearer
  * is public, and anything at all can arrive on it.
  */
+/*
+ * The caller has made the agreed candidate bearer usable.
+ *
+ * Call this after MCL_RDV_EVENT_BEARER_AGREED, once the peer's
+ * endpoint_token has been resolved and the endpoint is open and bound. Path
+ * validation does not start until it is called, because a PATH_CHALLENGE on a
+ * bearer nobody has opened proves nothing and merely fails slowly.
+ *
+ * MCL_RDV_ERR_STATE if there is no candidate waiting.
+ */
+mcl_rdv_status_t mcl_rdv_candidate_ready(mcl_rdv_t *rdv);
+
+/*
+ * Local policy has admitted this peer. Proceed.
+ *
+ * Call this after MCL_RDV_EVENT_POLICY_REQUIRED. The coordinator raises that
+ * event once reachability is proven and before the first irrevocable act, and
+ * takes no further step until one of these two is called.
+ */
+mcl_rdv_status_t mcl_rdv_admit(mcl_rdv_t *rdv);
+
+/*
+ * Local policy has refused this peer.
+ *
+ * The contact does not migrate and the coordinator closes. REFUSAL IS
+ * CONFORMANT: reception is not identity, is not authority, and is not
+ * obligation. A node that hears a stranger and declines to admit it has
+ * behaved correctly, and nothing in MCL says otherwise.
+ */
+mcl_rdv_status_t mcl_rdv_refuse(mcl_rdv_t *rdv);
+
 mcl_rdv_status_t mcl_rdv_deliver(mcl_rdv_t *rdv,
                                  uint8_t transport_id,
                                  const uint8_t *data,

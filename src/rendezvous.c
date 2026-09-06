@@ -67,24 +67,55 @@ static uint8_t or_default8(uint8_t value, uint8_t fallback)
  * ACROSS nodes is not required, because an acceptance is now matched on peer,
  * transport and profile as well.
  */
+/*
+ * The contact's session reference, generated once by the accepting side.
+ *
+ * Non-zero by construction: zero is the reserved "no session" value and
+ * mcl_contact_agree refuses it. Distinct from source_ref by construction too,
+ * because the two are different references that merely share a width.
+ */
+static void stage_admitting(mcl_rdv_t *rdv, uint32_t now);
+static void stage_validating(mcl_rdv_t *rdv, uint32_t now);
+static void stage_committing(mcl_rdv_t *rdv, uint32_t now);
+
+static uint32_t fresh_session_ref(mcl_rdv_t *rdv)
+{
+    uint32_t value;
+
+    rdv->transaction_counter++;
+    value = (rdv->config.source_ref ^ 0xA5A5A5A5u)
+            + (rdv->transaction_counter * 0x85EBCA6Bu);
+    if (value == 0u || value == rdv->config.source_ref) {
+        value = 0x5EED0001u + rdv->transaction_counter;
+    }
+    return value;
+}
+
 static uint32_t fresh_migration_ref(mcl_rdv_t *rdv)
 {
     uint32_t value = 0u;
     unsigned attempt;
 
+    /*
+     * A COUNTER, NOT RANDOMNESS.
+     *
+     * This field is transaction identity for correlation, not a nonce and not
+     * a secret -- see mcl-link's note that the Link sequence is not a nonce
+     * either. Randomness gives a probabilistic guarantee where a counter gives
+     * an absolute one: a monotonically advancing non-zero counter cannot
+     * repeat a reference within the contact until 32-bit exhaustion, whereas
+     * random draws collide with birthday probability for no benefit.
+     *
+     * Randomness is still used where it is actually needed and cannot be
+     * replaced by a counter: contention backoff, where the point is that two
+     * uncoordinated builders must not choose alike, and path validation
+     * challenges, where the point is that the value must be unpredictable to
+     * the peer before it arrives.
+     */
     for (attempt = 0u; attempt < 4u; ++attempt) {
-        if (rdv->platform.random != NULL &&
-            rdv->platform.random(rdv->platform.user,
-                                 (uint8_t *)&value, sizeof(value)) == 0) {
-            /* fall through with whatever it produced */
-        } else {
-            value = 0u;
-        }
-        if (value == 0u) {
-            rdv->transaction_counter++;
-            value = rdv->config.source_ref
-                    ^ (rdv->transaction_counter * 0x9E3779B9u);
-        }
+        rdv->transaction_counter++;
+        value = rdv->config.source_ref
+                ^ (rdv->transaction_counter * 0x9E3779B9u);
         /* Zero is reserved: it names no transaction. */
         if (value == 0u) {
             continue;
@@ -133,6 +164,8 @@ static void queue(mcl_rdv_t *rdv, mcl_rdv_event_kind_t kind,
     rdv->pending.profile_id = profile_id;
     rdv->pending.peer_ref = rdv->peer_ref;
     rdv->pending.migration_ref = rdv->migration_ref;
+    rdv->pending.peer_endpoint_token = rdv->peer_endpoint_token;
+    rdv->pending.session_ref = rdv->session_ref;
     rdv->has_pending = 1u;
 }
 
@@ -548,38 +581,139 @@ static mcl_rdv_status_t send_control(mcl_rdv_t *rdv, mcl_handoff_op_t op,
  */
 static void stage_agreed(mcl_rdv_t *rdv, uint32_t now)
 {
-    unsigned i;
+    (void)now;
+    /*
+     * Nothing happens here any more.
+     *
+     * AGREED means the bearer is chosen, not that it is usable. The caller
+     * has been handed BEARER_AGREED with the peer's endpoint token and must
+     * open the candidate before anything is sent on it; mcl_rdv_candidate_ready()
+     * is what moves this forward. See MCL_RDV_STATE_CANDIDATE_PENDING.
+     */
+    (void)rdv;
+}
 
-    if (!rdv->is_controller) {
-        return;
-    }
+/*
+ * VALIDATING and COMMITTING: retransmit the SAME control, never a new one.
+ *
+ * The handoff protocol below is idempotent by construction -- a duplicate
+ * PATH_CHALLENGE, PATH_RESPONSE, COMMIT or CONFIRM is defined to be safe, and
+ * that property was demonstrated at the Link layer over a hundred and four
+ * switches. The coordinator sent each control exactly once and therefore threw
+ * that away: a single lost PATH_RESPONSE left the controller in VALIDATING for
+ * ever, with recovery machinery it never invoked.
+ *
+ * A retry MUST carry the same challenge and the same migration_ref. Generating
+ * fresh ones would put a second transaction on the wire racing the first, and
+ * the stale-acceptance rules exist precisely to make that detectable rather
+ * than to make it routine.
+ */
+static void retransmit(mcl_rdv_t *rdv, uint32_t now, mcl_handoff_op_t op,
+                       const uint8_t *challenge, uint32_t timeout)
+{
     if (!elapsed(now, rdv->deadline_ms)) {
         return;
     }
-
-    /*
-     * The challenge is drawn from platform randomness where available. It is
-     * NOT a security mechanism and is not described as one: PATH_CHALLENGE
-     * establishes that the candidate path carried a frame in both directions,
-     * and nothing about who is at the other end.
-     */
-    memset(rdv->challenge, 0, sizeof(rdv->challenge));
-    if (rdv->platform.random == NULL ||
-        rdv->platform.random(rdv->platform.user, rdv->challenge,
-                             MCL_CONTACT_CHALLENGE_SIZE) != 0) {
-        for (i = 0u; i < MCL_CONTACT_CHALLENGE_SIZE; ++i) {
-            rdv->challenge[i] = (uint8_t)((rdv->migration_ref >> (i * 4u)) ^ i);
-        }
-    }
-
-    if (mcl_contact_validation_begin(mcl_node_get_contact(rdv->node),
-                                     rdv->challenge) != MCL_LINK_OK) {
+    if (rdv->retries >= MCL_RDV_MAX_HANDOFF_RETRIES) {
+        rdv->state = MCL_RDV_STATE_CLOSED;
+        queue(rdv, MCL_RDV_EVENT_CONTACT_LOST,
+              rdv->offered_transport, rdv->offered_profile);
         return;
     }
-    (void)send_control(rdv, MCL_HANDOFF_OP_PATH_CHALLENGE, rdv->challenge);
+    rdv->retries++;
+    if (send_control(rdv, op, challenge) != MCL_RDV_OK) {
+        /* The transport refused outright. That is not the same as a lost
+           frame and is not retried faster because of it; the deadline below
+           still applies. */
+        rdv->deadline_ms = now + timeout;
+        return;
+    }
+    rdv->deadline_ms = now + timeout;
+}
+
+/*
+ * ADMITTING: ask local policy, once.
+ *
+ * The event queue holds ONE pending event, so the controller cannot queue
+ * CANDIDATE_VALIDATED and POLICY_REQUIRED in the same breath -- the second
+ * would overwrite the first and the caller would never learn the path had been
+ * proven. Raising the question from a stage puts the two on consecutive polls,
+ * in the order they actually happen.
+ *
+ * Asked once per contact, not once per retransmission: a peer that had to
+ * resend a challenge has not become a different stranger.
+ */
+static void stage_admitting(mcl_rdv_t *rdv, uint32_t now)
+{
+    (void)now;
+    if (rdv->policy_raised) {
+        return;
+    }
+    rdv->policy_raised = 1u;
+    queue(rdv, MCL_RDV_EVENT_POLICY_REQUIRED,
+          rdv->offered_transport, rdv->offered_profile);
+}
+
+static void stage_validating(mcl_rdv_t *rdv, uint32_t now)
+{
+    if (!rdv->is_controller) {
+        return;
+    }
+    retransmit(rdv, now, MCL_HANDOFF_OP_PATH_CHALLENGE, rdv->challenge,
+               or_default(rdv->config.response_timeout_ms,
+                          DEFAULT_RESPONSE_TIMEOUT_MS));
+}
+
+static void stage_committing(mcl_rdv_t *rdv, uint32_t now)
+{
+    if (!rdv->is_controller) {
+        return;
+    }
+    retransmit(rdv, now, MCL_HANDOFF_OP_COMMIT, NULL,
+               or_default(rdv->config.response_timeout_ms,
+                          DEFAULT_RESPONSE_TIMEOUT_MS));
+}
+
+/*
+ * Begin path validation. Called from mcl_rdv_candidate_ready(), never from a
+ * timer: the caller decides when the candidate is open.
+ */
+static mcl_rdv_status_t begin_validation(mcl_rdv_t *rdv, uint32_t now)
+{
+    /*
+     * THE CHALLENGE MUST BE UNPREDICTABLE, AND THERE IS NO FALLBACK.
+     *
+     * It is not a security mechanism and is not described as one. But it does
+     * have to demonstrate that the FORWARD direction of the candidate path
+     * carried a frame, and the old fallback derived it from migration_ref --
+     * a value the peer already holds. A peer that can compute the challenge
+     * without receiving it can answer without having received it, and its
+     * response then demonstrates the return direction only.
+     *
+     * So a coordinator with no randomness cannot validate a path, and says so
+     * rather than validating something weaker under the same name.
+     */
+    if (rdv->platform.random == NULL) {
+        return MCL_RDV_ERR_STATE;
+    }
+    memset(rdv->challenge, 0, sizeof(rdv->challenge));
+    if (rdv->platform.random(rdv->platform.user, rdv->challenge,
+                             MCL_CONTACT_CHALLENGE_SIZE) != 0) {
+        return MCL_RDV_ERR_STATE;
+    }
+    if (mcl_contact_validation_begin(mcl_node_get_contact(rdv->node),
+                                     rdv->challenge) != MCL_LINK_OK) {
+        return MCL_RDV_ERR_STATE;
+    }
+    rdv->retries = 0u;
+    if (send_control(rdv, MCL_HANDOFF_OP_PATH_CHALLENGE,
+                     rdv->challenge) != MCL_RDV_OK) {
+        return MCL_RDV_ERR_TRANSPORT;
+    }
     rdv->state = MCL_RDV_STATE_VALIDATING;
     rdv->deadline_ms = now + or_default(rdv->config.response_timeout_ms,
                                         DEFAULT_RESPONSE_TIMEOUT_MS);
+    return MCL_RDV_OK;
 }
 
 /*
@@ -614,29 +748,53 @@ static mcl_rdv_status_t deliver_handoff(mcl_rdv_t *rdv, uint8_t transport_id,
 
     switch (action) {
     case MCL_HANDOFF_ACTION_SEND_PATH_RESPONSE:
+        /*
+         * The acceptor's point of no return.
+         *
+         * Answering asserts that this path reached us, and everything after it
+         * follows. So local policy gets its say HERE, before the answer, and
+         * not after COMMIT -- a refusal after commitment is not a refusal, it
+         * is a broken contact. The challenge is held until admitted; if the
+         * controller retries meanwhile, the retry carries the same challenge
+         * and nothing is lost.
+         */
+        if (rdv->state != MCL_RDV_STATE_MIGRATED && !rdv->admitted) {
+            memcpy(rdv->pending_challenge, control.challenge,
+                   MCL_CONTACT_CHALLENGE_SIZE);
+            rdv->has_pending_challenge = 1u;
+            rdv->state = MCL_RDV_STATE_ADMITTING;
+            break;
+        }
         (void)send_control(rdv, MCL_HANDOFF_OP_PATH_RESPONSE,
                            control.challenge);
         break;
     case MCL_HANDOFF_ACTION_SEND_CONFIRM:
+        /* A repeated COMMIT re-sends the SAME CONFIRM. The contact is already
+           migrated and saying so again is exactly what recovers a lost one. */
         (void)send_control(rdv, MCL_HANDOFF_OP_CONFIRM, NULL);
-        rdv->state = MCL_RDV_STATE_MIGRATED;
-        queue(rdv, MCL_RDV_EVENT_CONTACT_MIGRATED,
-              rdv->offered_transport, rdv->offered_profile);
+        if (rdv->state != MCL_RDV_STATE_MIGRATED) {
+            rdv->state = MCL_RDV_STATE_MIGRATED;
+            queue(rdv, MCL_RDV_EVENT_CONTACT_MIGRATED,
+                  rdv->offered_transport, rdv->offered_profile);
+        }
         break;
     default:
         break;
     }
 
     if (control.operation == MCL_HANDOFF_OP_PATH_RESPONSE &&
-        rdv->is_controller) {
+        rdv->is_controller && rdv->state == MCL_RDV_STATE_VALIDATING) {
         queue(rdv, MCL_RDV_EVENT_CANDIDATE_VALIDATED,
               rdv->offered_transport, rdv->offered_profile);
-        /* Validated. COMMIT is irrevocable, and mcl_node_send_handoff owns the
-           transition so a contact is never stranded in COMMITTING over a frame
-           that was never sent. */
-        (void)send_control(rdv, MCL_HANDOFF_OP_COMMIT, NULL);
+        /*
+         * Reachability is proven; whether to admit this stranger is not the
+         * SDK's decision. COMMIT is irrevocable, so the policy boundary goes
+         * immediately before it and never after.
+         */
+        rdv->state = MCL_RDV_STATE_ADMITTING;
     }
-    if (control.operation == MCL_HANDOFF_OP_CONFIRM && rdv->is_controller) {
+    if (control.operation == MCL_HANDOFF_OP_CONFIRM && rdv->is_controller &&
+        rdv->state != MCL_RDV_STATE_MIGRATED) {
         rdv->state = MCL_RDV_STATE_MIGRATED;
         queue(rdv, MCL_RDV_EVENT_CONTACT_MIGRATED,
               rdv->offered_transport, rdv->offered_profile);
@@ -653,11 +811,34 @@ mcl_rdv_status_t mcl_rdv_poll(mcl_rdv_t *rdv, mcl_rdv_event_t *out)
     }
     now = now_of(rdv);
 
+    /*
+     * A QUEUED EVENT IS RETURNED BEFORE THE MACHINE ADVANCES AGAIN.
+     *
+     * This ran the stage first, so on the very poll where the application was
+     * to learn "we agreed on this bearer, here is the peer's endpoint token",
+     * the coordinator had already sent PATH_CHALLENGE on it. The caller never
+     * got the chance to resolve the token, open the endpoint, bind the
+     * destination or apply admission policy -- and the simulator hid it,
+     * because its candidate bearer was routable before anyone opened it.
+     *
+     * Returning the event first costs one extra poll and makes the boundary
+     * real: nothing after BEARER_AGREED happens until the caller says so.
+     */
+    if (rdv->has_pending) {
+        *out = rdv->pending;
+        rdv->has_pending = 0u;
+        rdv->last_event_ms = now;
+        return MCL_RDV_OK;
+    }
+
     switch (rdv->state) {
     case MCL_RDV_STATE_ANNOUNCING: stage_announcing(rdv, now); break;
     case MCL_RDV_STATE_HEARD:      stage_heard(rdv, now);      break;
     case MCL_RDV_STATE_OFFERING:   stage_offering(rdv, now);   break;
     case MCL_RDV_STATE_AGREED:     stage_agreed(rdv, now);     break;
+    case MCL_RDV_STATE_ADMITTING:  stage_admitting(rdv, now);  break;
+    case MCL_RDV_STATE_VALIDATING: stage_validating(rdv, now); break;
+    case MCL_RDV_STATE_COMMITTING: stage_committing(rdv, now); break;
     default: break;
     }
 
@@ -669,6 +850,88 @@ mcl_rdv_status_t mcl_rdv_poll(mcl_rdv_t *rdv, mcl_rdv_event_t *out)
         memset(out, 0, sizeof(*out));
         out->kind = MCL_RDV_EVENT_NONE;
     }
+    return MCL_RDV_OK;
+}
+
+mcl_rdv_status_t mcl_rdv_candidate_ready(mcl_rdv_t *rdv)
+{
+    if (rdv == NULL) {
+        return MCL_RDV_ERR_NULL;
+    }
+    if (rdv->state != MCL_RDV_STATE_AGREED &&
+        rdv->state != MCL_RDV_STATE_CANDIDATE_PENDING) {
+        return MCL_RDV_ERR_STATE;
+    }
+    /*
+     * Only the controller challenges. The acceptor answers when asked, so for
+     * it "the candidate is open" is all this call means -- and it matters just
+     * as much there, because a challenge that arrives before the acceptor has
+     * opened its endpoint is a challenge it cannot answer.
+     */
+    if (!rdv->is_controller) {
+        rdv->state = MCL_RDV_STATE_CANDIDATE_PENDING;
+        return MCL_RDV_OK;
+    }
+    return begin_validation(rdv, now_of(rdv));
+}
+
+mcl_rdv_status_t mcl_rdv_admit(mcl_rdv_t *rdv)
+{
+    if (rdv == NULL) {
+        return MCL_RDV_ERR_NULL;
+    }
+    if (rdv->state != MCL_RDV_STATE_ADMITTING) {
+        return MCL_RDV_ERR_STATE;
+    }
+    rdv->admitted = 1u;
+
+    if (rdv->is_controller) {
+        /* COMMIT is irrevocable. mcl_node_send_handoff owns the lifecycle
+           transition, so a contact is never stranded in COMMITTING over a
+           frame that was never sent. */
+        rdv->retries = 0u;
+        if (send_control(rdv, MCL_HANDOFF_OP_COMMIT, NULL) != MCL_RDV_OK) {
+            /* Not fatal: COMMITTING retransmits the same COMMIT. */
+            rdv->state = MCL_RDV_STATE_COMMITTING;
+            rdv->deadline_ms = now_of(rdv)
+                               + or_default(rdv->config.response_timeout_ms,
+                                            DEFAULT_RESPONSE_TIMEOUT_MS);
+            return MCL_RDV_OK;
+        }
+        rdv->state = MCL_RDV_STATE_COMMITTING;
+        rdv->deadline_ms = now_of(rdv)
+                           + or_default(rdv->config.response_timeout_ms,
+                                        DEFAULT_RESPONSE_TIMEOUT_MS);
+        return MCL_RDV_OK;
+    }
+
+    /* The acceptor answers the challenge it was holding. */
+    rdv->state = MCL_RDV_STATE_VALIDATING;
+    if (rdv->has_pending_challenge) {
+        rdv->has_pending_challenge = 0u;
+        (void)send_control(rdv, MCL_HANDOFF_OP_PATH_RESPONSE,
+                           rdv->pending_challenge);
+    }
+    return MCL_RDV_OK;
+}
+
+mcl_rdv_status_t mcl_rdv_refuse(mcl_rdv_t *rdv)
+{
+    if (rdv == NULL) {
+        return MCL_RDV_ERR_NULL;
+    }
+    if (rdv->state != MCL_RDV_STATE_ADMITTING) {
+        return MCL_RDV_ERR_STATE;
+    }
+    /*
+     * Nothing is sent. There is no "refused" control on the wire and there
+     * should not be: silence is the conformant refusal, and a peer that hears
+     * nothing back learns exactly what it is entitled to learn.
+     */
+    rdv->has_pending_challenge = 0u;
+    rdv->state = MCL_RDV_STATE_CLOSED;
+    queue(rdv, MCL_RDV_EVENT_CONTACT_LOST,
+          rdv->offered_transport, rdv->offered_profile);
     return MCL_RDV_OK;
 }
 
@@ -694,7 +957,10 @@ mcl_rdv_status_t mcl_rdv_deliver(mcl_rdv_t *rdv,
      * they are routed by state and transport rather than by guessing.
      */
     if (rdv->state == MCL_RDV_STATE_AGREED ||
+        rdv->state == MCL_RDV_STATE_CANDIDATE_PENDING ||
+        rdv->state == MCL_RDV_STATE_ADMITTING ||
         rdv->state == MCL_RDV_STATE_VALIDATING ||
+        rdv->state == MCL_RDV_STATE_COMMITTING ||
         rdv->state == MCL_RDV_STATE_MIGRATED) {
         if (transport_id != rdv->config.bootstrap_transport_id) {
             return deliver_handoff(rdv, transport_id, data, size);
@@ -857,11 +1123,31 @@ mcl_rdv_status_t mcl_rdv_deliver(mcl_rdv_t *rdv,
                         object.body.transport_offer.transport_id;
                     reply.body.transport_accept.profile_id =
                         object.body.transport_offer.profile_id;
+                    /*
+                     * A SESSION IS NOT A SOURCE.
+                     *
+                     * This copied source_ref, which conflicts with the Link
+                     * model: local_ref, peer_ref, migration_ref,
+                     * endpoint_token and session_ref are distinct references
+                     * that happen to share a width, and sharing a width is not
+                     * a reason to share a value.
+                     *
+                     * It was also reachable as a defect rather than a
+                     * tidiness point. source_ref == 0 is legal, zero is the
+                     * reserved "no session" value, so a legal configuration
+                     * manufactured an illegal session and mcl_contact_agree
+                     * refused it -- while this path discarded the refusal.
+                     *
+                     * The accepting side generates it once, non-zero, and it
+                     * persists across migrations for the life of the contact.
+                     */
                     reply.body.transport_accept.session_ref =
-                        rdv->config.source_ref;
+                        fresh_session_ref(rdv);
                     (void)emit(rdv, rdv->config.bootstrap_transport_id, &reply);
 
                     rdv->session_ref = reply.body.transport_accept.session_ref;
+                    rdv->peer_endpoint_token =
+                        object.body.transport_offer.endpoint_token;
                     rdv->offered_transport =
                         object.body.transport_offer.transport_id;
                     rdv->offered_profile =
@@ -929,6 +1215,30 @@ mcl_rdv_status_t mcl_rdv_deliver(mcl_rdv_t *rdv,
              * secret -- it crosses an observable medium in the clear.
              */
             rdv->session_ref = object.body.transport_accept.session_ref;
+            /*
+             * THE OFFERER LEARNS NO ADDRESS FROM AN ACCEPTANCE.
+             *
+             * TRANSPORT_ACCEPT carries migration_ref, transport_id, profile_id
+             * and session_ref -- and no endpoint_token. Only TRANSPORT_OFFER
+             * has one, and it is the OFFERER own. So the acceptor can reach
+             * the offerer on the candidate, and the offerer cannot reach the
+             * acceptor.
+             *
+             * This coordinator used to send PATH_CHALLENGE from the offerer
+             * regardless, which worked only because the test rooms candidate
+             * bearer was routable in both directions before anyone opened it.
+             * On a real socket or a real GATT connection it is a frame with
+             * nowhere to go.
+             *
+             * The field is not addable at major 1: TRANSPORT_ACCEPT is 16
+             * bytes and the size is fixed for the major. So the token stays
+             * zero here and the integrator is told plainly, through the event,
+             * that this side must resolve the peer address by other means --
+             * typically the source address the transport reports for the
+             * acceptance itself. mcl_rdv_candidate_ready() is the point at
+             * which the caller asserts it can, and nothing is sent before it.
+             */
+            rdv->peer_endpoint_token = 0u;
             rdv->is_controller = 1u;
             /*
              * Both peers call mcl_contact_agree: the accepting peer when it
