@@ -191,6 +191,18 @@ typedef enum {
      * peer may already have acted on it, so the only safe move is to advance
      * and let the idempotent retransmission settle it -- never to start a
      * fresh transaction over the top of one that may be live.
+     *
+     * NO PUBLIC FUNCTION IN THIS RELEASE RETURNS IT, AND THAT IS STATED
+     * RATHER THAN LEFT TO BE DISCOVERED.
+     *
+     * The distinction is real and load-bearing INSIDE the coordinator: it
+     * decides whether an announcement counts, whether OFFERING is entered, and
+     * whether a prepared acceptance stays armed. But every place that consumes
+     * it is a stage function returning void, so the value never reaches a
+     * caller. Declaring it and quietly never producing it at the boundary
+     * would be the same overstatement as an event that is declared and never
+     * emitted -- and this header already refuses to do that with
+     * MCL_RDV_EVENT_SECURITY_ESTABLISHED. test_rendezvous.c asserts both.
      */
     MCL_RDV_TX_UNCERTAIN = 6
 } mcl_rdv_status_t;

@@ -126,6 +126,25 @@ typedef struct {
     int drop_accepts;
     unsigned accepts_dropped;
     /*
+     * FORCE THE TRANSPORT'S ANSWER FOR THE NEXT N EMISSIONS.
+     *
+     * mcl_sdk_tx_fn has three outcomes and the coordinator keeps all three
+     * apart -- but every case in this file let the room answer 0, so the
+     * distinction was implemented and never exercised. A rule no test can
+     * break is a rule nobody has checked.
+     *
+     *   tx_force  0   sent
+     *            -1   DEFINITELY not sent: nothing reaches the air at all
+     *            +1   the transport cannot tell; the bytes DO go out, which is
+     *                 the case that matters, because a coordinator treating
+     *                 "unknown" as "not sent" would start a second
+     *                 transaction over the top of a live one
+     */
+    int tx_force;
+    int tx_force_left;
+    unsigned tx_forced;
+    int tx_say_unknown;        /* set for ONE call by the block above */
+    /*
      * A TRANSCRIPT OF THE SHARED MEDIUM.
      *
      * Several of the election properties are statements about what was SAID,
@@ -161,6 +180,17 @@ static int32_t room_tx(void *user, uint8_t transport_id,
     }
     if (room->count >= MAX_TX || size > MAX_FRAME_SIZE) {
         return room->tx_unknown ? 1 : 0;
+    }
+    room->tx_say_unknown = 0;
+    if (room->tx_force_left > 0 && transport_id == room->shared_transport) {
+        room->tx_force_left--;
+        room->tx_forced++;
+        if (room->tx_force < 0) {
+            return -1;      /* refused outright: no airtime, no delivery */
+        }
+        if (room->tx_force > 0) {
+            room->tx_say_unknown = 1;
+        }
     }
     /*
      * Log and filter before anything else, so a destroyed acceptance still
@@ -252,7 +282,7 @@ static int32_t room_tx(void *user, uint8_t transport_id,
             }
         }
     }
-    return room->tx_unknown ? 1 : 0;
+    return (room->tx_unknown || room->tx_say_unknown) ? 1 : 0;
 }
 
 static uint32_t room_now(void *user)
@@ -2518,6 +2548,192 @@ static void test_allocator_refusal(void)
           "and the bearers are exhausted rather than retried for ever");
 }
 
+
+/* ------------------------------------------- the three transmit outcomes
+ *
+ * mcl_sdk_tx_fn defines three, deliberately: sent, DEFINITELY not sent, and
+ * "the transport cannot tell". The coordinator used to collapse the third into
+ * the first, so a frame that may already have reached the peer and a frame
+ * that certainly did not were the same thing one layer above the place that
+ * took care to separate them.
+ *
+ * The two consequences point opposite ways, which is why they cannot share a
+ * branch:
+ *
+ *   DEFINITE REFUSAL -- the peer has nothing. Advancing state spends a timeout
+ *   waiting for an answer to something never said, consumes a retry, and
+ *   eventually reports NO_COMMON_BEARER about a peer that was never asked.
+ *
+ *   UNCERTAIN -- the peer may already have acted. Retrying from the top puts a
+ *   second transaction on the air racing a live one. The safe move is to
+ *   advance and let the idempotent retransmission settle it.
+ *
+ * So each control is driven through all three and the state asserted after
+ * each.
+ */
+static void test_transmit_outcomes(void)
+{
+    room_t room;
+    unit_t u;
+    mcl_rdv_event_t ev;
+    mcl_wire_tier0_t object;
+    unsigned i;
+
+    reset_harness();
+    printf("[rendezvous] sent, definitely not sent, and cannot tell\n");
+
+    /* ---- PRESENCE, definite refusal ---- */
+    room_init(&room);
+    g_room = &room;
+    g_node_count = 1u;
+    unit_start(&u, &room, 0u, 0xD1D1D1D1u);
+    room.tx_force = -1;
+    room.tx_force_left = 1;
+    for (i = 0u; i < 2000u && room.tx_forced == 0u; ++i) {
+        (void)mcl_rdv_poll(&u.rdv, &ev);
+        room_advance(&room, 10u);
+    }
+    check(room.tx_forced == 1u, "the transport refused one PRESENCE");
+    check(u.rdv.state == MCL_RDV_STATE_ANNOUNCING,
+          "a refused PRESENCE does not make this machine a solicitor");
+    check(u.rdv.announcements == 0u, "and does not count as an announcement");
+    check(count_kind(&room, MCL_WIRE_KIND_PRESENCE) == 0u,
+          "nothing reached the air");
+
+    /* ---- PRESENCE, uncertain: it DOES advance ---- */
+    room.tx_force = 1;
+    room.tx_force_left = 1;
+    room.tx_forced = 0u;
+    for (i = 0u; i < 2000u && room.tx_forced == 0u; ++i) {
+        (void)mcl_rdv_poll(&u.rdv, &ev);
+        room_advance(&room, 10u);
+    }
+    check(room.tx_forced == 1u, "the transport could not tell about the next");
+    check(u.rdv.state == MCL_RDV_STATE_SOLICITING,
+          "an uncertain PRESENCE DOES make this machine a solicitor");
+    check(u.rdv.announcements == 1u,
+          "and counts, because the bytes may well have gone out");
+    room.tx_force = 0;
+
+    /* ---- OFFER, definite refusal, then success ---- */
+    reset_harness();
+    room_init(&room);
+    g_room = &room;
+    g_node_count = 1u;
+    unit_start(&u, &room, 0u, 0xD2D2D2D2u);
+    make_presence(&object, 0x0A0A0A0Au);
+    deliver_object(&u.rdv, 1u, &object);
+    check(u.rdv.state == MCL_RDV_STATE_HEARD, "it is a responder");
+    room.tx_force = -1;
+    room.tx_force_left = 1;
+    for (i = 0u; i < 2000u && room.tx_forced == 0u; ++i) {
+        (void)mcl_rdv_poll(&u.rdv, &ev);
+        room_advance(&room, 10u);
+    }
+    check(room.tx_forced == 1u, "the transport refused one OFFER");
+    check(u.rdv.state != MCL_RDV_STATE_OFFERING,
+          "a refused OFFER does not enter OFFERING, where an answer is awaited");
+    check(count_kind(&room, MCL_WIRE_KIND_TRANSPORT_OFFER) == 0u,
+          "and nothing reached the air");
+    room.tx_force = 0;
+    for (i = 0u; i < 4000u && u.rdv.state != MCL_RDV_STATE_OFFERING; ++i) {
+        (void)mcl_rdv_poll(&u.rdv, &ev);
+        room_advance(&room, 10u);
+    }
+    check(u.rdv.state == MCL_RDV_STATE_OFFERING,
+          "the offer goes out once the transport recovers");
+    check(count_kind(&room, MCL_WIRE_KIND_TRANSPORT_OFFER) == 1u,
+          "exactly once");
+
+    /* ---- ACCEPT, definite refusal, then uncertain ---- */
+    reset_harness();
+    room_init(&room);
+    g_room = &room;
+    g_node_count = 1u;
+    unit_start(&u, &room, 0u, 0xD3D3D3D3u);
+    check(drive_to_soliciting(&u, &room), "it owns a round");
+    settle(&u, &room, 1000u);
+    make_offer(&object, 0x0B0B0B0Bu, 0x41414141u, 3u, 1u, 0xB0000001u);
+    deliver_object(&u.rdv, 1u, &object);
+    check(u.rdv.state == MCL_RDV_STATE_ACCEPTING, "a contender is selected");
+    room.tx_force = -1;
+    room.tx_force_left = 1;
+    room.tx_forced = 0u;
+    for (i = 0u; i < 2000u && room.tx_forced == 0u; ++i) {
+        (void)mcl_rdv_poll(&u.rdv, &ev);
+        room_advance(&room, 10u);
+    }
+    check(room.tx_forced == 1u, "the transport refused one ACCEPT");
+    check(u.rdv.has_pending_accept == 1u,
+          "a refused ACCEPT stays armed rather than being considered sent");
+    check(u.rdv.state == MCL_RDV_STATE_ACCEPTING,
+          "and the machine is still waiting to send it");
+    room.tx_force = 1;
+    room.tx_force_left = 1;
+    room.tx_forced = 0u;
+    for (i = 0u; i < 2000u && room.tx_forced == 0u; ++i) {
+        (void)mcl_rdv_poll(&u.rdv, &ev);
+        room_advance(&room, 10u);
+    }
+    check(room.tx_forced == 1u, "the transport could not tell about the next");
+    check(u.rdv.has_pending_accept == 0u,
+          "an uncertain ACCEPT is treated as sent, not armed again");
+    check(u.rdv.state == MCL_RDV_STATE_AGREED,
+          "and the machine advances to await the challenge");
+    check(u.rdv.session_ref != 0u, "holding one session for the contact");
+
+    /*
+     * MCL_RDV_TX_UNCERTAIN NEVER REACHES A CALLER IN THIS RELEASE.
+     *
+     * The distinction is real inside the coordinator -- it decides whether an
+     * announcement counts, whether OFFERING is entered, and whether a prepared
+     * acceptance stays armed -- but every consumer of it is a stage function
+     * returning void, so the value does not escape. The header says so, and
+     * this is what holds the header to it, exactly as the check above holds it
+     * to never emitting SECURITY_ESTABLISHED. A declared-and-unreachable value
+     * is only honest while somebody is checking.
+     *
+     * Every public entry point is driven here with the transport answering
+     * "cannot tell" on every call.
+     */
+    {
+        room_t r2;
+        unit_t v;
+        mcl_rdv_event_t e2;
+        int leaked = 0;
+        unsigned n;
+
+        reset_harness();
+        room_init(&r2);
+        g_room = &r2;
+        g_node_count = 1u;
+        unit_start(&v, &r2, 0u, 0xD4D4D4D4u);
+        r2.tx_unknown = 1;              /* every send answers "cannot tell" */
+        for (n = 0u; n < 4000u; ++n) {
+            if (mcl_rdv_poll(&v.rdv, &e2) == MCL_RDV_TX_UNCERTAIN) leaked = 1;
+            room_advance(&r2, 10u);
+        }
+        if (mcl_rdv_start(&v.rdv) == MCL_RDV_TX_UNCERTAIN) leaked = 1;
+        if (mcl_rdv_candidate_ready(&v.rdv) == MCL_RDV_TX_UNCERTAIN) leaked = 1;
+        if (mcl_rdv_admit(&v.rdv) == MCL_RDV_TX_UNCERTAIN) leaked = 1;
+        if (mcl_rdv_refuse(&v.rdv) == MCL_RDV_TX_UNCERTAIN) leaked = 1;
+        {
+            mcl_wire_tier0_t o;
+            uint8_t buf[MAX_FRAME_SIZE];
+            size_t written = 0u;
+            make_presence(&o, 0x0E0E0E0Eu);
+            if (mcl_wire_tier0_encode_at_major(MCL_WIRE_STABLE_MAJOR, &o, buf,
+                                               sizeof(buf), &written)
+                == MCL_WIRE_OK) {
+                if (mcl_rdv_deliver(&v.rdv, 1u, buf, written)
+                    == MCL_RDV_TX_UNCERTAIN) leaked = 1;
+            }
+        }
+        check(!leaked,
+              "no public entry point returns MCL_RDV_TX_UNCERTAIN, as declared");
+    }
+}
+
 int main(void)
 {
     printf("rendezvous coordinator\n");
@@ -2547,6 +2763,7 @@ int main(void)
     test_responder_refs_differ();
     test_allocator_boundary();
     test_allocator_refusal();
+    test_transmit_outcomes();
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;
