@@ -93,13 +93,106 @@ extern "C" {
    a protocol, it is a stuck node that never reports. */
 #define MCL_RDV_MAX_HANDOFF_RETRIES 4u
 
+/*
+ * AP-BOOTSTRAP-1 RENDEZVOUS PARAMETERS. THESE ARE PROTOCOL, NOT PREFERENCE.
+ *
+ * These values were builder configuration, with defaults, and arbitrary
+ * non-zero values were accepted. That is the two-builder failure this whole
+ * layer exists to remove, in a new place: Builder A at 8 slots of 200 ms and
+ * Builder B at 32 slots of 500 ms both compile, both pass their own tests, and
+ * implement different medium-access behaviour. Nothing on the wire tells
+ * either of them.
+ *
+ * So for a Stranger-Contact claim they come from the PROFILE. A configuration
+ * may leave them zero, or state them and match; anything else is refused by
+ * mcl_rdv_init(). Research that needs other values says so explicitly, with
+ * mcl_rdv_config_t::parameters, and gives up the claim.
+ */
+#define MCL_RDV_AP1_BACKOFF_SLOTS         16u
+#define MCL_RDV_AP1_BACKOFF_SLOT_MS      250u
+#define MCL_RDV_AP1_ANNOUNCE_INTERVAL_MS 1500u
+#define MCL_RDV_AP1_MAX_ANNOUNCEMENTS     10u
+#define MCL_RDV_AP1_MAX_OFFER_RETRIES      2u
+
+/*
+ * THE RESPONSE TIMEOUT IS DERIVED, NOT CHOSEN.
+ *
+ * It was 3000 ms, and once every transmission obeys the contention rule that
+ * number is not merely tight, it is IMPOSSIBLE: the legal maximum backoff
+ * alone is 15 x 250 = 3750 ms, so a peer behaving perfectly could be declared
+ * silent before it was permitted to answer.
+ *
+ * Replacing one guessed constant with another would leave the same defect. It
+ * comes from the profile's own numbers:
+ *
+ *   maximum contention delay   (16 - 1) x 250 ms        = 3750 ms
+ *   one deferral               a maximum frame's air    =  787 ms
+ *   the response itself        a maximum frame's air    =  787 ms
+ *   scheduling allowance                                =  500 ms
+ *                                                        --------
+ *                                                         5824 ms
+ *
+ * 787 ms is the airtime of a 17-byte TRANSPORT_OFFER at 300 baud, 160 samples
+ * per symbol, 48 kHz, with a 0.2 s preamble -- the largest Tier-0 object at
+ * major 1, so it bounds every response. The deferral term is there because
+ * sensing is mandatory: a node whose chosen slot is busy waits for the medium,
+ * and the longest thing it can be waiting for is one maximum frame.
+ *
+ * Frozen at 6000 ms, the next round number above the sum. If the waveform
+ * changes, this is recomputed rather than adjusted.
+ */
+#define MCL_RDV_AP1_RESPONSE_TIMEOUT_MS 6000u
+
+/*
+ * How long a SOLICITOR waits for the first response to its PRESENCE.
+ *
+ * Numerically identical to the response timeout today, and DELIBERATELY A
+ * SEPARATE NAME. They answer different questions -- "how long until a
+ * responder can have answered my solicitation" and "how long until my offer
+ * can have been accepted" -- and they are equal only because at AP-BOOTSTRAP-1
+ * the bound on both is the same worst-case backoff plus one maximum frame.
+ *
+ * Sharing one constant would mean a future waveform change to one silently
+ * moved the other, which is exactly the class of coupling that put a 3000 ms
+ * response timeout against a 3750 ms legal backoff in the first place.
+ */
+#define MCL_RDV_AP1_SOLICIT_TIMEOUT_MS 6000u
+
+typedef enum {
+    /* The parameters above. The default, and what a zeroed config gets. */
+    MCL_RDV_PARAMETERS_PROFILE = 0,
+    /*
+     * Arbitrary values, for research. NOT INTEROPERABLE and not a
+     * Stranger-Contact claim: a peer built to the profile will use the
+     * profile's numbers and cannot discover yours.
+     */
+    MCL_RDV_PARAMETERS_EXPERIMENTAL = 1
+} mcl_rdv_parameters_t;
+
 typedef enum {
     MCL_RDV_OK = 0,
     MCL_RDV_ERR_NULL = 1,
     MCL_RDV_ERR_CONFIG = 2,
     MCL_RDV_ERR_STATE = 3,
+    /* The transport DEFINITELY did not send. State must not advance. */
     MCL_RDV_ERR_TRANSPORT = 4,
-    MCL_RDV_ERR_DECODE = 5
+    MCL_RDV_ERR_DECODE = 5,
+    /*
+     * THE TRANSPORT CANNOT TELL WHETHER THE BYTES WENT OUT.
+     *
+     * mcl_sdk_tx_fn defines this third outcome deliberately -- returning > 0
+     * rather than claiming a certainty the hardware does not have -- and this
+     * layer collapsed it into MCL_RDV_OK, so "definitely not sent" and
+     * "possibly sent" became the same thing one level above the place that
+     * took care to separate them.
+     *
+     * They must not be the same thing here either. A definite refusal means
+     * the peer has nothing, so retrying is free. An uncertain send means the
+     * peer may already have acted on it, so the only safe move is to advance
+     * and let the idempotent retransmission settle it -- never to start a
+     * fresh transaction over the top of one that may be live.
+     */
+    MCL_RDV_TX_UNCERTAIN = 6
 } mcl_rdv_status_t;
 
 typedef enum {
@@ -124,10 +217,49 @@ typedef enum {
     MCL_RDV_EVENT_SECURITY_ESTABLISHED = 8
 } mcl_rdv_event_kind_t;
 
+/*
+ * THE SOLICITATION EPOCH, AND THE ROLE CONFUSION IT REPLACED.
+ *
+ * There used to be no notion of WHOSE round this is. A node stayed in
+ * ANNOUNCING after transmitting PRESENCE, and TRANSPORT_OFFER was consumed in
+ * ANNOUNCING, HEARD and OFFERING alike -- so every machine could be announcer,
+ * responder, offerer and acceptor at the same instant. With two machines that
+ * is harmless, because whichever roles they land in are complementary. With
+ * three it does not converge:
+ *
+ *   measured, 600 s simulated, three machines, one medium:
+ *     36 BEARER_AGREED, 0 CANDIDATE_VALIDATED, 0 CONTACT_MIGRATED
+ *
+ * Every agreement landed on an acceptor and no node ever became a controller,
+ * so nothing drove a handoff. It is a stable cycle, not a race: it never
+ * breaks on its own, and no amount of ACCEPT-matching repairs it, because
+ * there was no distinguished party to select among the broadcast responses.
+ *
+ * So one machine owns each round:
+ *
+ *     PRESENCE  = solicitation      (only a SOLICITING node has sent one)
+ *     OFFER     = contender response (only a responder sends one)
+ *     ACCEPT    = responder selection, keyed on migration_ref
+ *
+ * A machine that has successfully emitted this epoch's PRESENCE is the
+ * solicitor and does not become a responder to anyone else's PRESENCE during
+ * it. A machine that hears a PRESENCE BEFORE transmitting its own cancels its
+ * pending announcement and is a responder for that epoch. Two PRESENCE frames
+ * in one slot collide, nobody hears either, both time out and re-announce from
+ * a fresh random slot -- which is why randomising the FIRST announcement is
+ * load-bearing rather than tidy.
+ *
+ * No wire field was added. TRANSPORT_ACCEPT already echoes migration_ref, and
+ * that echo is the selection: the responder whose reference comes back is
+ * chosen, the others hear a reference that is not theirs.
+ */
 typedef enum {
     MCL_RDV_STATE_IDLE = 0,
-    MCL_RDV_STATE_ANNOUNCING = 1,   /* emitting PRESENCE on the bootstrap bearer */
-    MCL_RDV_STATE_HEARD = 2,        /* a peer PRESENCE has arrived */
+    /* This machine has NOT yet emitted this epoch's PRESENCE. Still eligible
+       to become a responder to somebody else's. */
+    MCL_RDV_STATE_ANNOUNCING = 1,
+    /* Responder: a peer PRESENCE arrived before we announced. */
+    MCL_RDV_STATE_HEARD = 2,
     MCL_RDV_STATE_OFFERING = 3,     /* a TRANSPORT_OFFER is outstanding */
     MCL_RDV_STATE_AGREED = 4,       /* accepted; the candidate is not yet proven */
     MCL_RDV_STATE_VALIDATING = 5,
@@ -158,7 +290,28 @@ typedef enum {
     MCL_RDV_STATE_ADMITTING = 10,
     /* COMMIT has been sent and CONFIRM is outstanding. COMMIT is irrevocable:
        this state can only go forward or be retried, never back. */
-    MCL_RDV_STATE_COMMITTING = 11
+    MCL_RDV_STATE_COMMITTING = 11,
+    /*
+     * An acceptance is prepared and waiting for its contention slot.
+     *
+     * TRANSPORT_ACCEPT used to go out inline, the instant the offer decoded.
+     * That is the one behaviour guaranteed to collide when two machines answer
+     * the same offer, and it contradicted the profile's own rule, which has no
+     * exception for replies.
+     */
+    MCL_RDV_STATE_ACCEPTING = 12,
+    /*
+     * SOLICITING: this machine's PRESENCE is on the air and it owns the round.
+     *
+     * It is the ONLY state that consumes a TRANSPORT_OFFER. It takes the first
+     * valid offer of a bearer this deployment mandates, binds that responder,
+     * and ignores the rest of the epoch's contenders. HEARD and OFFERING are
+     * responder states and consume no offers at all, which is what makes the
+     * three-machine cycle -- A believing B is its peer while B believes C is
+     * and C believes A is -- structurally unreachable rather than merely
+     * unlikely.
+     */
+    MCL_RDV_STATE_SOLICITING = 13
 } mcl_rdv_state_t;
 
 typedef struct {
@@ -336,6 +489,21 @@ typedef struct {
      */
     uint32_t capability_tag;
     uint8_t presence_ttl;
+    /*
+     * Where the timing parameters above come from.
+     *
+     * MCL_RDV_PARAMETERS_PROFILE (zero, and so the default) means the
+     * AP-BOOTSTRAP-1 values. Leave the timing fields zero, or set them to the
+     * profile's values; mcl_rdv_init() REFUSES a shared-medium configuration
+     * that deviates, because a deviation is invisible on the wire and turns
+     * into an interoperability failure at the second builder rather than a
+     * compile error at the first.
+     *
+     * MCL_RDV_PARAMETERS_EXPERIMENTAL accepts any values and gives up the
+     * Stranger-Contact claim. It exists so research does not have to lie
+     * about which it is doing.
+     */
+    mcl_rdv_parameters_t parameters;
 } mcl_rdv_config_t;
 
 typedef struct {
@@ -360,6 +528,23 @@ typedef struct {
      * "correlates one transport-change transaction, and nothing else", and the
      * coordinator's own stale-ACCEPT check depends on that -- so it was relying
      * on a property it had just broken.
+     *
+     * ON A SHARED MEDIUM IT MUST ALSO BE RANDOM, AND A COUNTER IS NOT ENOUGH.
+     *
+     * A counter is the right shape for a value that only has to be distinct
+     * within one node. migration_ref stopped being that the moment it became
+     * the RESPONDER SELECTOR for an unaddressed broadcast: an ACCEPT names a
+     * transaction, and every responder holding that reference believes it was
+     * chosen. `source_ref ^ (counter * k)` is deterministic in source_ref, and
+     * wire.h assigns source_ref no uniqueness property -- so two builders who
+     * legally chose the same one, on their first transaction, produce the same
+     * migration_ref and are selected by the same ACCEPT.
+     *
+     * So for a shared-medium deployment the value is drawn from
+     * platform.random, which mcl_rdv_init() already requires there. A retry
+     * REUSES it; a genuinely new transaction draws again. Point-to-point
+     * deployments keep the counter, where its absolute non-repetition is worth
+     * more than a probabilistic guarantee against a peer that cannot exist.
      */
     uint32_t last_migration_ref;
     uint32_t transaction_counter;
@@ -384,6 +569,11 @@ typedef struct {
     /* POLICY_REQUIRED has been raised for this contact. Asked once, not once
        per retransmission: a peer that resent a challenge is not a new one. */
     uint8_t policy_raised;
+    /* An acceptance prepared but not yet transmitted; see
+       MCL_RDV_STATE_ACCEPTING. Held whole rather than rebuilt, so what is
+       sent after the backoff is exactly what was decided on. */
+    mcl_wire_tier0_t pending_accept;
+    uint8_t has_pending_accept;
     uint8_t is_controller;       /* we sent the offer that was accepted */
     uint32_t deadline_ms;        /* next scheduled action */
     uint32_t last_event_ms;
@@ -485,7 +675,7 @@ mcl_rdv_state_t mcl_rdv_state(const mcl_rdv_t *rdv);
  * an airtime-aware medium model measure the collision rate with no hardware.
  * Not const: drawing a slot consumes randomness, which is a state change.
  */
-uint16_t mcl_rdv_reply_delay_ms(mcl_rdv_t *rdv);
+uint32_t mcl_rdv_reply_delay_ms(mcl_rdv_t *rdv);
 
 #ifdef __cplusplus
 }
