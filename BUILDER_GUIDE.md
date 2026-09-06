@@ -156,6 +156,33 @@ do not treat it as a failure.
 `endpoint_token` is resolved on the candidate transport. It is not an address,
 not a credential, and not a capability.
 
+**If you use `mcl_rdv_t`, two of these values are yours to allocate and it will
+not guess for you.** `mcl_rdv_platform_t` has `allocate_session` and
+`allocate_endpoint_token`, both optional:
+
+| Leave NULL when | Supply when |
+|---|---|
+| you run one contact, with a fixed address on each bearer | you run a pool of contacts, or your address is per-transaction |
+
+The built-in defaults are a hash of your own `source_ref` and a value read from
+`mcl_rdv_config_t::bearer_endpoint_token[]`. Both are functions of *this
+machine* and neither can be right in a pool: `session_ref` has to be distinct
+across every contact you are running, and the coordinator has no view of the
+others. On BLE the token has to select **one transaction**, because
+`BLE-ACTIVATE-1` makes it the match key of the advertisement your peer scans
+for — one static token for two concurrent activations advertises identically
+for both.
+
+A hook that returns non-zero, or writes a zero session, is a **refusal**, and it
+is honoured: no acceptance is sent, no offer claims an address you did not mint,
+and nothing of the coordinator's own is substituted. The peer sees silence,
+retries, and eventually reports `NO_COMMON_BEARER` — which is the truth from its
+side.
+
+`allocate_endpoint_token` is called **once per transaction**, not once per
+emission. A retransmitted offer carries the token the first one did, for the
+same reason it carries the same `migration_ref`.
+
 ## 6. How do I authenticate the peer?
 
 **You cannot, in MCL, today.** No cryptography is implemented in any repository:

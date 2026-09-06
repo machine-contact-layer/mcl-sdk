@@ -422,6 +422,51 @@ typedef struct {
      * claim requires the callback.
      */
     int (*self_transmitting)(void *user);
+    /*
+     * ALLOCATE A SESSION REFERENCE FOR A NEW CONTACT.
+     *
+     * Optional. When NULL the coordinator generates one, which is correct for
+     * a node holding ONE contact and wrong for a node holding several.
+     * session_ref must be distinct across everything the integrator is
+     * running, and the coordinator can only see itself: it has no view of the
+     * contact pool, of references handed out by another coordinator in the
+     * same process, or of references persisted across a restart.
+     *
+     * That boundary was invisible because the generator looked adequate.
+     * `source_ref ^ k + counter * k'` is fine for one machine's own
+     * transactions and says nothing about anybody else's, and a builder
+     * running a pool would have discovered the collision as two contacts
+     * quietly sharing a session.
+     *
+     * MUST write a NON-ZERO value and return 0. Zero is the reserved "no
+     * session" value; returning it, or returning non-zero, is treated as a
+     * refusal to allocate and the acceptance is not sent -- rather than
+     * manufacturing a reference mcl_contact_agree will reject.
+     */
+    int (*allocate_session)(void *user, uint32_t *out);
+    /*
+     * THIS MACHINE'S REACHABILITY HINT ON A BEARER, FOR THIS TRANSACTION.
+     *
+     * Optional. When NULL the static mcl_rdv_config_t::bearer_endpoint_token
+     * value is used, which is what a node with one contact and a fixed
+     * address wants.
+     *
+     * It is not sufficient where the token has to select ONE transaction.
+     * BLE-ACTIVATE-1 makes the token the match key of the advertisement the
+     * peer scans for, so a machine running two activations on one bearer with
+     * one static token advertises identically for both and a scanner cannot
+     * tell them apart. A per-transaction token is the integrator's to mint,
+     * because only the integrator knows what its transport can be reached on.
+     *
+     * Called ONCE per transaction, not once per emission: a retransmitted
+     * offer carries the same token, for the same reason it carries the same
+     * migration_ref. Zero is legal and means "reach me by the profile's own
+     * discovery"; a non-zero return value from the callback itself is a
+     * refusal, and the offer is deferred rather than sent with a token the
+     * integrator did not sanction.
+     */
+    int (*allocate_endpoint_token)(void *user, uint8_t transport_id,
+                                   uint8_t profile_id, uint32_t *out);
     void *user;
 } mcl_rdv_platform_t;
 
@@ -552,6 +597,14 @@ typedef struct {
     uint8_t offered_transport;
     uint8_t offered_profile;
     uint32_t session_ref;
+    /*
+     * OUR OWN token for the bearer currently being offered, resolved once per
+     * transaction. Held rather than recomputed so a retransmitted offer is
+     * byte-identical to the first: an allocator called again would mint a
+     * second token, and the peer would then be scanning for one of two
+     * advertisements with no way to know which.
+     */
+    uint32_t local_endpoint_token;
     uint32_t peer_endpoint_token; /* where to reach the peer on the candidate */
     uint8_t challenge[MCL_CONTACT_CHALLENGE_SIZE];
     /* The acceptor holds the challenge it has been asked to answer while

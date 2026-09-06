@@ -99,6 +99,26 @@ static uint32_t fresh_session_ref(mcl_rdv_t *rdv)
 {
     uint32_t value;
 
+    /*
+     * THE INTEGRATOR ALLOCATES IF IT SAYS IT WILL.
+     *
+     * The generator below is a function of this node's own source_ref and its
+     * own counter, so it distinguishes this node's transactions from each
+     * other and says nothing about anybody else's. A builder running a pool of
+     * contacts needs distinctness across the pool, which is not a thing this
+     * layer can compute -- so it asks, and refuses rather than guessing when
+     * the answer does not come. Zero is returned to mean "no session"; the
+     * caller must not send an acceptance carrying it.
+     */
+    if (rdv->platform.allocate_session != NULL) {
+        uint32_t allocated = 0u;
+        if (rdv->platform.allocate_session(rdv->platform.user,
+                                           &allocated) != 0) {
+            return 0u;
+        }
+        return allocated;      /* zero here is the allocator's refusal */
+    }
+
     rdv->transaction_counter++;
     value = (rdv->config.source_ref ^ 0xA5A5A5A5u)
             + (rdv->transaction_counter * 0x85EBCA6Bu);
@@ -282,6 +302,32 @@ static void fill_presence(const mcl_rdv_t *rdv, mcl_wire_tier0_t *object)
         or_default8(rdv->config.presence_ttl, DEFAULT_PRESENCE_TTL);
 }
 
+/*
+ * This machine's own reachability hint on one bearer.
+ *
+ * Zero is legal throughout and means "reach me by the profile's own
+ * discovery". What is NOT legal is silently substituting the configured value
+ * when an allocator refused: the refusal is the integrator saying it cannot be
+ * reached there right now, and an offer is a claim that it can.
+ */
+static int resolve_local_token(mcl_rdv_t *rdv, uint8_t index)
+{
+    uint32_t token = 0u;
+
+    if (rdv->platform.allocate_endpoint_token == NULL) {
+        rdv->local_endpoint_token = rdv->config.bearer_endpoint_token[index];
+        return 0;
+    }
+    if (rdv->platform.allocate_endpoint_token(
+            rdv->platform.user,
+            rdv->config.bearer_transport_id[index],
+            rdv->config.bearer_profile_id[index], &token) != 0) {
+        return -1;
+    }
+    rdv->local_endpoint_token = token;
+    return 0;
+}
+
 static void fill_offer(const mcl_rdv_t *rdv, mcl_wire_tier0_t *object,
                        uint8_t index)
 {
@@ -309,8 +355,14 @@ static void fill_offer(const mcl_rdv_t *rdv, mcl_wire_tier0_t *object,
      * the other's address in advance, and a token this machine publishes about
      * ITSELF, carried inside the bootstrap exchange, is the opposite of that.
      */
-    object->body.transport_offer.endpoint_token =
-        rdv->config.bearer_endpoint_token[index];
+    /*
+     * Resolved ONCE per transaction, in stage_heard(), and held. Reading the
+     * config here directly would be right for a fixed address and wrong the
+     * moment an integrator mints a token per transaction, because a
+     * retransmission would then carry a different one than the offer it is
+     * repeating.
+     */
+    object->body.transport_offer.endpoint_token = rdv->local_endpoint_token;
     object->body.transport_offer.validity =
         or_default8(rdv->config.presence_ttl, DEFAULT_PRESENCE_TTL);
 }
@@ -662,6 +714,25 @@ static void stage_heard(mcl_rdv_t *rdv, uint32_t now)
      */
     if (rdv->migration_ref == 0u) {
         rdv->migration_ref = fresh_migration_ref(rdv);
+        /*
+         * And the token for it, once. A retry does not come back through
+         * here, so the offer that goes out on attempt three is the same offer
+         * that went out on attempt one.
+         */
+        if (resolve_local_token(rdv, rdv->bearer_index) != 0) {
+            /*
+             * The integrator declined to mint a token for this bearer.
+             * Emitting the config's static value instead would put an address
+             * on the air that the integrator did not sanction, so nothing is
+             * sent -- and a retry is consumed, so a permanently failing
+             * allocator moves to the next bearer and eventually reports
+             * NO_COMMON_BEARER rather than spinning here.
+             */
+            rdv->migration_ref = 0u;
+            rdv->state = MCL_RDV_STATE_OFFERING;
+            rdv->deadline_ms = now;
+            return;
+        }
     }
 
     fill_offer(rdv, &object, rdv->bearer_index);
@@ -756,6 +827,7 @@ static void stage_offering(mcl_rdv_t *rdv, uint32_t now)
        next offer draws a fresh one, and a late acceptance of the abandoned
        transaction can no longer match. */
     rdv->migration_ref = 0u;
+    rdv->local_endpoint_token = 0u;
     rdv->offered_transport = 0u;
     rdv->offered_profile = 0u;
     if (rdv->bearer_index >= rdv->config.bearer_count) {
@@ -1006,6 +1078,7 @@ static void abandon_epoch(mcl_rdv_t *rdv, uint32_t now)
     rdv->offered_profile = 0u;
     rdv->session_ref = 0u;
     rdv->peer_endpoint_token = 0u;
+    rdv->local_endpoint_token = 0u;
     rdv->has_pending_accept = 0u;
     rdv->has_pending_challenge = 0u;
     rdv->policy_raised = 0u;
@@ -1589,6 +1662,24 @@ mcl_rdv_status_t mcl_rdv_deliver(mcl_rdv_t *rdv,
                      */
                     reply.body.transport_accept.session_ref =
                         fresh_session_ref(rdv);
+                    /*
+                     * ZERO MEANS THE INTEGRATOR REFUSED TO ALLOCATE.
+                     *
+                     * Sending it would offer a session reference that
+                     * mcl_contact_agree rejects, and this path used to
+                     * discard that rejection and carry on -- so the two ends
+                     * disagreed about whether a contact existed. Nothing is
+                     * sent instead: silence is what an unanswered
+                     * solicitation already means, and the offering peer
+                     * retries and eventually reports NO_COMMON_BEARER, which
+                     * is the truth from its side.
+                     */
+                    if (reply.body.transport_accept.session_ref == 0u) {
+                        rdv->migration_ref = 0u;
+                        rdv->peer_seen = 0u;
+                        rdv->peer_ref = 0u;
+                        break;
+                    }
                     /*
                      * THE ACCEPTANCE CONTENDS FOR THE MEDIUM LIKE EVERYTHING
                      * ELSE.

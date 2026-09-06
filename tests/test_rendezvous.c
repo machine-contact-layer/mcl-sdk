@@ -427,6 +427,47 @@ static unsigned g_policy_asked;
 static int g_auto_restart;
 static unsigned g_ready_failures;
 
+/*
+ * THE INTEGRATOR'S SIDE OF THE ALLOCATOR BOUNDARY.
+ *
+ * Both hooks are optional and every other case in this file leaves them NULL,
+ * which is the point: a builder who supplies neither must get exactly the
+ * behaviour that existed before they were added.
+ */
+static unsigned g_session_calls;
+static unsigned g_token_calls;
+static int g_session_refuses;          /* the allocator declines */
+static int g_token_refuses;
+static uint32_t g_next_session;
+static uint32_t g_next_token;
+
+static int alloc_session(void *user, uint32_t *out)
+{
+    (void)user;
+    g_session_calls++;
+    if (g_session_refuses) {
+        return -1;
+    }
+    *out = g_next_session;
+    g_next_session += 0x1000u;
+    return 0;
+}
+
+static int alloc_token(void *user, uint8_t transport_id, uint8_t profile_id,
+                       uint32_t *out)
+{
+    (void)user;
+    (void)profile_id;
+    g_token_calls++;
+    if (g_token_refuses) {
+        return -1;
+    }
+    /* Distinct per bearer AND per call, so a reused token is visible. */
+    *out = g_next_token + (uint32_t)transport_id;
+    g_next_token += 0x10000u;
+    return 0;
+}
+
 static void tick(room_t *room, mcl_rdv_event_t *events, uint32_t step_ms)
 {
     unsigned j;
@@ -488,6 +529,12 @@ static void reset_harness(void)
     g_auto_restart = 0;
     g_policy_asked = 0u;
     g_ready_failures = 0u;
+    g_session_calls = 0u;
+    g_token_calls = 0u;
+    g_session_refuses = 0;
+    g_token_refuses = 0;
+    g_next_session = 0x7E550001u;
+    g_next_token = 0x00A00000u;
 }
 
 static void base_config(mcl_rdv_config_t *cfg, uint32_t source_ref,
@@ -2303,6 +2350,174 @@ static void test_presence_collision_converges(void)
           "with no machine answering its own solicitation");
 }
 
+
+/* ------------------------------------------------- the allocator boundary
+ *
+ * session_ref and this machine's endpoint_token were both produced INSIDE the
+ * coordinator -- one from a hash of source_ref and a counter, the other read
+ * straight out of a static config array. Both are adequate for a node with one
+ * contact and a fixed address, and neither is a thing this layer can actually
+ * know:
+ *
+ *   session_ref     must be distinct across the integrator's whole contact
+ *                   pool, and the coordinator can only see itself
+ *   endpoint_token  must select ONE transaction wherever the peer scans for
+ *                   it -- BLE-ACTIVATE-1 makes it the advertisement match key,
+ *                   so one static token for two concurrent activations
+ *                   advertises identically for both
+ *
+ * So both are hooks, both optional, and the default is exactly what was there
+ * before.
+ */
+
+static void test_allocator_boundary(void)
+{
+    room_t room;
+    unit_t a, b;
+    mcl_rdv_event_t ev[2];
+    unsigned i;
+    int migrated = 0;
+    unsigned offers = 0u, accepts = 0u;
+    uint32_t offer_token = 0u, accept_session = 0u;
+    int token_stable = 1;
+
+    reset_harness();
+    printf("[rendezvous] the integrator allocates the session and the token\n");
+    room_init(&room);
+    /* Destroy the first acceptance, so the responder retransmits its offer.
+       That is what makes "called once per transaction" testable rather than
+       merely stated: a per-emission allocator would mint a second token. */
+    room.drop_accepts = 1;
+    g_room = &room;
+    g_node_count = 2u;
+    unit_start(&a, &room, 0u, 0xA1A1A1A1u);
+    unit_start(&b, &room, 1u, 0xB1B1B1B1u);
+    a.plat.allocate_session = alloc_session;
+    a.plat.allocate_endpoint_token = alloc_token;
+    b.plat.allocate_session = alloc_session;
+    b.plat.allocate_endpoint_token = alloc_token;
+    /* The platform is copied into the coordinator by init, so it has to be
+       set before init -- re-init here rather than reaching into the struct. */
+    (void)mcl_rdv_init(&a.rdv, &a.cfg, &a.plat, &a.node);
+    (void)mcl_rdv_init(&b.rdv, &b.cfg, &b.plat, &b.node);
+    (void)mcl_rdv_start(&a.rdv);
+    (void)mcl_rdv_start(&b.rdv);
+
+    for (i = 0u; i < 12000u; ++i) {
+        tick(&room, ev, 10u);
+        if (ev[0].kind == MCL_RDV_EVENT_CONTACT_MIGRATED ||
+            ev[1].kind == MCL_RDV_EVENT_CONTACT_MIGRATED) migrated = 1;
+    }
+
+    for (i = 0u; i < room.log_count; ++i) {
+        const logged_t *e = &room.log[i];
+        if (e->kind == (uint8_t)MCL_WIRE_KIND_TRANSPORT_OFFER) {
+            if (offers == 0u) offer_token = e->endpoint_token;
+            else if (e->endpoint_token != offer_token) token_stable = 0;
+            offers++;
+        } else if (e->kind == (uint8_t)MCL_WIRE_KIND_TRANSPORT_ACCEPT) {
+            if (accepts == 0u) accept_session = e->session_ref;
+            accepts++;
+        }
+    }
+    printf("       (%u offers, %u acceptances; token %08lX session %08lX; "
+           "%u token calls, %u session calls)\n",
+           offers, accepts, (unsigned long)offer_token,
+           (unsigned long)accept_session, g_token_calls, g_session_calls);
+
+    check(migrated, "a contact still migrates with both hooks supplied");
+    check(g_token_calls > 0u, "the endpoint token came from the integrator");
+    check(g_session_calls > 0u, "and so did the session reference");
+    check(offer_token >= 0x00A00000u,
+          "the token on the wire is the allocated one, not the config value");
+    check(offers >= 2u, "the offer was retransmitted");
+    check(token_stable,
+          "and every retransmission carried the SAME token, not a new one");
+    check(accept_session == a.rdv.session_ref ||
+          accept_session == b.rdv.session_ref,
+          "the session on the wire is the allocated one");
+    check(a.rdv.session_ref == b.rdv.session_ref && a.rdv.session_ref != 0u,
+          "and both ends hold it");
+    check(g_token_calls <= offers,
+          "the token allocator is called per transaction, not per emission");
+}
+
+/*
+ * A REFUSAL IS NOT A ZERO.
+ *
+ * An allocator that declines is the integrator saying it cannot take this
+ * contact right now. The coordinator must not substitute something of its own:
+ * a manufactured session is rejected by mcl_contact_agree, and this path used
+ * to discard that rejection and carry on with the two ends disagreeing about
+ * whether a contact existed. A manufactured token is worse, because it is an
+ * address claim the integrator never made.
+ */
+static void test_allocator_refusal(void)
+{
+    room_t room;
+    unit_t s;
+    mcl_wire_tier0_t offer;
+    mcl_rdv_event_t ev;
+    unsigned i;
+
+    reset_harness();
+    printf("[rendezvous] an allocator that declines is honoured\n");
+
+    /* Session: the solicitor cannot mint one, so it says nothing at all. */
+    room_init(&room);
+    g_room = &room;
+    g_node_count = 1u;
+    unit_start(&s, &room, 0u, 0xC1C1C1C1u);
+    s.plat.allocate_session = alloc_session;
+    (void)mcl_rdv_init(&s.rdv, &s.cfg, &s.plat, &s.node);
+    (void)mcl_rdv_start(&s.rdv);
+    g_session_refuses = 1;
+    check(drive_to_soliciting(&s, &room), "the machine owns a round");
+    settle(&s, &room, 1000u);
+    make_offer(&offer, 0x0B0B0B0Bu, 0x31313131u, 3u, 1u, 0xB0000001u);
+    deliver_object(&s.rdv, 1u, &offer);
+    check(g_session_calls == 1u, "the allocator was asked");
+    check(s.rdv.session_ref == 0u, "no session is manufactured over a refusal");
+    check(s.rdv.has_pending_accept == 0u, "and no acceptance is armed");
+    check(!s.rdv.peer_seen, "and no contender is left bound");
+    for (i = 0u; i < 500u; ++i) {
+        (void)mcl_rdv_poll(&s.rdv, &ev);
+        room_advance(&room, 10u);
+    }
+    check(count_kind(&room, MCL_WIRE_KIND_TRANSPORT_ACCEPT) == 0u,
+          "nothing was said about a contact that was refused");
+
+    /* Token: the responder cannot mint one, so it does not offer that bearer
+       -- and it does not fall back to the configured value either. */
+    reset_harness();
+    room_init(&room);
+    g_room = &room;
+    g_node_count = 1u;
+    unit_start(&s, &room, 0u, 0xC2C2C2C2u);
+    s.plat.allocate_endpoint_token = alloc_token;
+    (void)mcl_rdv_init(&s.rdv, &s.cfg, &s.plat, &s.node);
+    (void)mcl_rdv_start(&s.rdv);
+    g_token_refuses = 1;
+    {
+        mcl_wire_tier0_t presence;
+        make_presence(&presence, 0x0A0A0A0Au);
+        deliver_object(&s.rdv, 1u, &presence);
+    }
+    check(s.rdv.state == MCL_RDV_STATE_HEARD, "it became a responder");
+    for (i = 0u; i < 20000u; ++i) {
+        (void)mcl_rdv_poll(&s.rdv, &ev);
+        room_advance(&room, 10u);
+    }
+    printf("       (%u token calls, %u offers, state %u)\n",
+           g_token_calls, count_kind(&room, MCL_WIRE_KIND_TRANSPORT_OFFER),
+           (unsigned)s.rdv.state);
+    check(g_token_calls > 0u, "the token allocator was asked");
+    check(count_kind(&room, MCL_WIRE_KIND_TRANSPORT_OFFER) == 0u,
+          "no offer claims an address the integrator would not mint");
+    check(s.rdv.state == MCL_RDV_STATE_EXHAUSTED,
+          "and the bearers are exhausted rather than retried for ever");
+}
+
 int main(void)
 {
     printf("rendezvous coordinator\n");
@@ -2330,6 +2545,8 @@ int main(void)
     test_forced_cycle_dissolves();
     test_presence_collision_converges();
     test_responder_refs_differ();
+    test_allocator_boundary();
+    test_allocator_refusal();
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;
