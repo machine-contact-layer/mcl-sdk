@@ -54,8 +54,13 @@ enum {
      * Two implementations placed within range of one another, with no prior
      * configuration, will detect one another and exchange first contact.
      *
-     * NOT CLAIMABLE TODAY by anyone, including this implementation -- see
-     * MCL_CONFORMANCE_UNMET_BOOTSTRAP_UNSPECIFIED.
+     * Claimable since 2026-09-06, when mcl-ap/spec/ap-bootstrap-1.md landed.
+     * The claim carries MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE, because
+     * that profile is Candidate rather than Stable.
+     *
+     * This comment said "NOT CLAIMABLE TODAY by anyone" while the same header
+     * below it, and the implementation, granted the claim. A reader who
+     * stopped at the enum got the opposite of the truth.
      */
     MCL_CONFORMANCE_STRANGER_CONTACT_1 = 2u,
     /* Reserved name. Not specified; requires a security profile that does not
