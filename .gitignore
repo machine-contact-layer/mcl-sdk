@@ -4,6 +4,11 @@
 # to exact inputs without carrying a binary that will be stale by the next one.
 hardware/esp32-dual-peer/build/
 
+# Same rule for the autonomous node: the build tree is not a source of record.
+# build-manifest.txt is regenerated per build and names absolute local paths.
+hardware/dfr1154-autonomous-node/build/
+hardware/dfr1154-autonomous-node/build-manifest.txt
+
 # .NET build output for the host harness
 tools/dual-transport-peer/bin/
 tools/dual-transport-peer/obj/
