@@ -158,11 +158,61 @@ typedef struct {
      */
     uint32_t (*now_ms)(void *user);
     /*
-     * Bounded randomness for reply scheduling. Optional: when NULL the
-     * coordinator schedules replies deterministically from source_ref, which
-     * still separates two peers but not three. See mcl_rdv_reply_delay_ms().
+     * Bounded randomness. REQUIRED for any shared-medium claim.
+     *
+     * It was optional, with a documented fallback deriving the backoff slot
+     * from source_ref. That fallback is now refused for MCL Stranger-Contact 1:
+     * source_ref is a correlation reference with NO uniqueness property, so two
+     * uncoordinated builders may legally choose the same one and then collide
+     * on every single contention round, forever. A deterministic function of a
+     * non-unique value cannot provide a multi-builder collision guarantee, and
+     * describing it as scheduling was generous.
+     *
+     * mcl_rdv_init() refuses a configuration that claims the shared medium
+     * without it. Point-to-point use on an arranged bearer may still omit it.
      */
     int (*random)(void *user, uint8_t *out, size_t size);
+    /*
+     * Is the shared medium busy right now? Non-zero means an MCL transmission
+     * is in progress or being acquired.
+     *
+     * THIS IS WHAT MAKES CONTENTION WORK, AND ITS ABSENCE IS WHY THE FIRST
+     * DESIGN COULD NOT.
+     *
+     * A backoff that only delays cannot help when the delay window is shorter
+     * than the transmission it is protecting: at 300 baud a 17-byte
+     * TRANSPORT_OFFER occupies 786.7 ms of air, and PRESENCE occupies 600 ms,
+     * so two responders scheduled anywhere inside a 400 ms window overlap with
+     * CERTAINTY rather than with some probability. Randomising harder does not
+     * fix an interval that is too short by construction.
+     *
+     * What fixes it is deferring on a busy medium, so a machine that draws a
+     * later slot yields to one already transmitting instead of talking over it.
+     * `mcl_ap_listener` already distinguishes QUIET / WAITING / HEARD /
+     * CONTACT, so an MCL implementation has this without inventing an energy
+     * detector.
+     *
+     * Optional only for a bearer with no shared medium.
+     */
+    int (*medium_busy)(void *user);
+    /*
+     * Is this machine's own emitter transmitting right now?
+     *
+     * SELF-ECHO IS A PHYSICAL FACT AND MUST NOT BE INFERRED FROM source_ref.
+     *
+     * The first version discarded any object whose source_ref equalled our own.
+     * But wire.h defines source_ref as a correlation reference for semantic
+     * origin, explicitly not identity, with no uniqueness property assigned. So
+     * two unrelated builders may legally pick the same value, and each would
+     * then silently discard everything the other said -- two machines in one
+     * room, both announcing, both deaf, and no diagnostic anywhere.
+     *
+     * Only the platform knows when its own speaker was driven. When this is
+     * NULL the coordinator falls back to the source_ref comparison, which is
+     * defence in depth and NOT a discrimination mechanism; a shared-medium
+     * claim requires the callback.
+     */
+    int (*self_transmitting)(void *user);
     void *user;
 } mcl_rdv_platform_t;
 
@@ -184,11 +234,43 @@ typedef struct {
     uint8_t bearer_count;
     uint8_t bearer_transport_id[MCL_RDV_MAX_BEARERS];
     uint8_t bearer_profile_id[MCL_RDV_MAX_BEARERS];
+    /*
+     * This machine's own reachability hint on each bearer, or 0 for none.
+     *
+     * It goes into TRANSPORT_OFFER.endpoint_token. The first version hardcoded
+     * zero and left a comment saying a builder "sets it on the object before it
+     * goes out" -- which the builder could not do, because the object is built
+     * and emitted inside one function and never surfaces in between. The hook
+     * has to be in the configuration, where the integrator actually is.
+     *
+     * Zero remains legal and means "reach me by the profile's own discovery".
+     */
+    uint32_t bearer_endpoint_token[MCL_RDV_MAX_BEARERS];
     mcl_contact_role_t role;
+    /*
+     * Does this deployment run on a SHARED MEDIUM?
+     *
+     * When set, mcl_rdv_init() requires platform.random and platform.medium_busy
+     * and refuses the configuration without them, because the contention rules
+     * in section 7 of AP-BOOTSTRAP-1 cannot be honoured without both. A
+     * point-to-point bearer sets it to 0 and needs neither.
+     */
+    uint8_t shared_medium;
     /* Timing, all in milliseconds. Zero means "use the built-in default". */
     uint16_t announce_interval_ms;
     uint16_t response_timeout_ms;
-    uint16_t reply_slot_ms;
+    /*
+     * Contention backoff: a slot count and a slot width.
+     *
+     * A machine waits a random whole number of slots, then transmits only if
+     * the medium is idle. The width must exceed the acquisition time of a
+     * transmission already under way -- the AP preamble is 200 ms -- so that a
+     * machine drawing a later slot can SEE an earlier one and defer. It does
+     * not have to exceed the whole frame, which is what makes 250 ms workable
+     * where a 400 ms continuous window was not.
+     */
+    uint8_t backoff_slots;
+    uint16_t backoff_slot_ms;
     uint8_t max_announcements;
     uint8_t max_offer_retries;
     /*
@@ -212,6 +294,25 @@ typedef struct {
     uint8_t peer_seen;
     uint32_t peer_ref;
     uint32_t migration_ref;
+    /*
+     * Every transaction gets a FRESH migration_ref, and the previous one is
+     * remembered so a regenerated value cannot repeat it.
+     *
+     * The first version computed `source_ref | 1`, which is constant for the
+     * life of the node: abandoning a bearer reset it to zero and the next
+     * transaction regenerated the identical value. wire.h says migration_ref
+     * "correlates one transport-change transaction, and nothing else", and the
+     * coordinator's own stale-ACCEPT check depends on that -- so it was relying
+     * on a property it had just broken.
+     */
+    uint32_t last_migration_ref;
+    uint32_t transaction_counter;
+    /* What we actually offered, so an acceptance can be matched against it. */
+    uint8_t offered_transport;
+    uint8_t offered_profile;
+    uint32_t session_ref;
+    uint8_t challenge[MCL_CONTACT_CHALLENGE_SIZE];
+    uint8_t is_controller;       /* we sent the offer that was accepted */
     uint32_t deadline_ms;        /* next scheduled action */
     uint32_t last_event_ms;
     mcl_rdv_event_t pending;
@@ -253,22 +354,35 @@ mcl_rdv_status_t mcl_rdv_deliver(mcl_rdv_t *rdv,
 mcl_rdv_state_t mcl_rdv_state(const mcl_rdv_t *rdv);
 
 /*
- * The delay this node waits before replying to a PRESENCE it heard.
+ * The backoff this node waits before transmitting into a contended medium.
  *
  * CONTENTION IS PROTOCOL, NOT MODULATION. Ten machines that answer one
- * PRESENCE immediately defeat a perfect modem: the replies collide, every one
- * of them is lost, and the modem's error structure has nothing to do with it.
- * So a reply is placed in a slot rather than sent at once.
+ * PRESENCE at once defeat a perfect modem: the replies overlap, every one is
+ * lost, and the modem's error structure has nothing to do with it.
  *
- * The slot is drawn from platform.random when it is available. When it is not,
- * it is derived from source_ref, which separates two peers reliably and three
- * only by luck -- stated here rather than left for a builder to discover with
- * three machines in a room.
+ * THE FIRST DESIGN OF THIS FUNCTION WAS ARITHMETICALLY UNABLE TO WORK.
  *
- * Exposed because it is testable: a simulated clock and a stub random source
- * can measure the collision rate without any hardware.
+ * It drew a delay uniformly from a 400 ms window. At 300 baud a 17-byte
+ * TRANSPORT_OFFER occupies 786.7 ms of air and a 10-byte PRESENCE occupies
+ * 600 ms, so two responders placed anywhere in that window overlap with
+ * CERTAINTY. That is not a high collision probability to be improved by better
+ * randomness; it is a window shorter than the thing it was protecting.
+ *
+ * What replaces it is a slotted backoff with deferral: draw a whole number of
+ * slots, and at slot expiry transmit only if platform.medium_busy says the
+ * medium is idle. The slot width need only exceed the acquisition time of a
+ * transmission already in progress -- the AP preamble is 200 ms -- because a
+ * machine that draws a later slot can then SEE an earlier one and yield. That
+ * is why 250 ms works where a 400 ms continuous window could not.
+ *
+ * Randomness is required rather than derived. source_ref carries no uniqueness
+ * property, so two builders may legally share one and collide on every round.
+ *
+ * Exposed because it is testable: a simulated clock, a stub random source and
+ * an airtime-aware medium model measure the collision rate with no hardware.
+ * Not const: drawing a slot consumes randomness, which is a state change.
  */
-uint16_t mcl_rdv_reply_delay_ms(const mcl_rdv_t *rdv);
+uint16_t mcl_rdv_reply_delay_ms(mcl_rdv_t *rdv);
 
 #ifdef __cplusplus
 }
