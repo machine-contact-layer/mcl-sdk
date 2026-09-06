@@ -611,7 +611,6 @@ static void test_garbage_refused(void)
 static void test_clock_wrap(void)
 {
     mcl_rdv_t a;
-    mcl_rdv_t *nodes[1];
     mcl_rdv_event_t ev[1];
     mcl_rdv_config_t ca;
     mcl_rdv_platform_t pa;
@@ -640,7 +639,9 @@ static void test_clock_wrap(void)
     (void)mcl_rdv_init(&a, &ca, &pa, &na);
     (void)mcl_rdv_start(&a);
 
-    nodes[0] = &a;
+    /* This case drives mcl_rdv_poll directly rather than through tick(),
+       because it is counting emissions per poll across the wrap rather than
+       running an exchange. */
     emissions = 0u;
     for (i = 0u; i < 60u; ++i) {
         (void)mcl_rdv_poll(&a, &ev[0]);
