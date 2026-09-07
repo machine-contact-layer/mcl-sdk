@@ -4,7 +4,15 @@ Developer-facing low-level reference SDK for the **Machine Contact Layer**.
 
 The primary reference SDK is a portable C99 implementation designed to run from resource-constrained microcontrollers through embedded systems and hosted applications without changing the protocol contract.
 
-**Integrating MCL into a product? Read [`BUILDER_GUIDE.md`](BUILDER_GUIDE.md) first.** It walks the ten questions a builder actually asks and is explicit about what MCL does not do yet — including that `MCL Stranger-Contact 1` is not claimable by anyone today.
+**New here? [`QUICKSTART.md`](QUICKSTART.md)** takes you from a clone to two
+machines in contact in eight steps, through the integration facade in
+[`include/mcl/machine.h`](include/mcl/machine.h): five platform operations, one
+event, and MCL keeps the protocol choreography.
+
+**Integrating MCL into a product?** [`BUILDER_GUIDE.md`](BUILDER_GUIDE.md) walks
+the ten questions a builder actually asks and is explicit about what MCL does
+not do yet — including that `MCL Stranger-Contact 1` is claimable only with a
+stated caveat, and that there is no cryptography anywhere in v1.
 
 ## Implementation Contract
 

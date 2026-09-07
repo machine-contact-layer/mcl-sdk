@@ -192,6 +192,13 @@ if(MCL_SDK_BUILD_TESTS)
         C_EXTENSIONS NO)
     add_test(NAME mcl_sdk_transport_registry COMMAND mcl_sdk_test_transport_registry)
 
+    add_executable(mcl_sdk_first_contact examples/first_contact.c)
+    target_link_libraries(mcl_sdk_first_contact PRIVATE mcl_sdk)
+    set_target_properties(mcl_sdk_first_contact PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
     add_executable(mcl_sdk_hello_world examples/hello_world.c)
     target_link_libraries(mcl_sdk_hello_world PRIVATE mcl_sdk)
     set_target_properties(mcl_sdk_hello_world PROPERTIES

@@ -7,6 +7,12 @@ missing header.
 
 `mcl-core/research/TWO_BUILDER_AUDIT.md` exists because this document did not.
 
+> **If you have not run MCL yet, start with [`QUICKSTART.md`](QUICKSTART.md).**
+> It gets you from a clone to two machines in contact in eight steps, using
+> `mcl/machine.h` — the facade that owns the protocol choreography. This
+> document is the layer underneath: what the facade is doing, and every question
+> it does not answer for you.
+
 ## 0. What you are agreeing to build
 
 MCL is a delivery layer for first contact and contact continuity. It is not an
@@ -21,7 +27,12 @@ The split, before you write anything:
 | **Your deployment** | Trust anchors, credential issuance, the deployment profile, local policy |
 
 **Read this before designing anything around acoustic:** `MCL Stranger-Contact 1`
-is not claimable by anyone today, including this implementation. See §4.
+is claimable, and only **with a caveat**. `AP-BOOTSTRAP-1` and `BLE-ACTIVATE-1`
+are both **Candidate**: normatively complete and implementable from their text,
+but one has been measured from a single transmitter class and the other has
+never been exercised between two independent implementations. The caveat travels
+in code as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, not only in prose. See
+§4 for what that means for your product.
 
 ## 1. How do I install MCL?
 
@@ -49,6 +60,9 @@ dependency, caller-owned structs. It builds for a microcontroller because it was
 built on one — see `mcl-ap/experiments/008-embedded-node/`.
 
 ## 2. How do I attach my transport?
+
+> Through `mcl/machine.h` this is `mcl_platform_t::transport_send`, and the
+> contract below is identical. The rest of this section applies either way.
 
 One callback. The SDK turns semantic objects into canonical bytes and hands
 them to you; getting those bytes onto a medium is yours.
@@ -83,6 +97,11 @@ not ignore it and infer the bearer from call order.
 
 ## 3. How do I announce myself?
 
+> Through `mcl/machine.h` you do not: `mcl_machine_start()` announces, and the
+> coordinator owns the cadence, the contention and the epoch. What follows is
+> the layer underneath, for a builder who is not using the facade — a bearer
+> with no shared medium, or an integration that has to place PRESENCE itself.
+
 ```c
 mcl_node_config_t cfg = {0};
 cfg.supported_wire_majors_mask = (1u << 1);   /* Stable major 1 */
@@ -109,27 +128,58 @@ peer must never treat it as proof of who sent something.
 
 ## 4. How do I hear an unknown peer?
 
-**This is the honest gap, and it is the one that matters most.**
+**This was the honest gap, and it is the one that has changed most.** What
+follows replaces the earlier answer, which said acoustic rendezvous did not
+exist yet and told you not to design around it.
 
-Today MCL guarantees that two machines interoperate *given a bearer they already
-share*. It does not yet guarantee that two machines who have never met can find
-one another:
+### What exists now
 
-- `IP-DATAGRAM` assigns no port and defers discovery; an IP peer is reachable
-  because a `TRANSPORT_OFFER` already carried an `endpoint_token`.
-- `BLE-GATT` defines a service UUID and a rendezvous advertisement, but an
-  implementation that never advertises is fully conformant.
-- Acoustic is the only bearer needing no prior arrangement, and it is
-  **Experimental**. `AP-BOOTSTRAP-1` — the mandatory rendezvous profile — does
-  not exist yet.
+```text
+AP-BOOTSTRAP-1     Candidate   mcl-ap/spec/ap-bootstrap-1.md
+    the acoustic bootstrap profile: waveform, objects, contention,
+    solicitation epochs, timing constants
 
-So today you must arrange a bearer out of band: a known address, a provisioned
-BLE peer, a fleet network. That is a real limitation and `mcl-core/governance/V1_SCOPE.md`
-§5.10 records it as the floor the project is raising before v1.0.
+BLE-ACTIVATE-1     Candidate   mcl-ble/spec/ble-activate-1.md
+    how two strangers who have agreed on BLE actually reach a connection
 
-**Do not design your product's discovery story around acoustic yet.** Design it
-around a bearer you control, and treat acoustic rendezvous as something you gain
-later without changing your MCL integration.
+mcl/rendezvous.h   the coordinator that drives them
+mcl/machine.h      the facade you should actually program against
+```
+
+So you no longer implement detection, PRESENCE, contention, ordered bearer
+trial, OFFER/ACCEPT, activation, path validation or migration. You implement a
+clock, randomness, a way to move bytes, a way to open a bearer and a policy
+answer, and you receive one event. See [`QUICKSTART.md`](QUICKSTART.md) §06.
+
+### What is still true
+
+**Both profiles are Candidate, not Stable, and the reason is not a formality.**
+
+`AP-BOOTSTRAP-1` is Candidate because every measurement of its waveform comes
+from one transmitter class. `BLE-ACTIVATE-1` is Candidate because no two
+independent implementations have activated a BLE candidate against each other.
+Until that changes, `MCL Stranger-Contact 1` over a BLE candidate bearer is
+**not guaranteed** between builders who never coordinate — and the caveat
+travels in code, as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, rather than
+only in prose.
+
+**The Stable bearers still defer discovery, deliberately.** `IP-DATAGRAM`
+assigns no port and defines no discovery; `BLE-GATT` makes advertising
+explicitly optional, which is right for a profile about carriage over an
+established connection. Two fully conformant implementations can therefore each
+wait for the other to connect. That is the gap `BLE-ACTIVATE-1` closes for a
+deployment that names BLE as a candidate bearer, without touching Stable
+`BLE-GATT-1`.
+
+**So: what should you design around today?**
+
+- If your machines have a bearer in common already — a fleet network, a
+  provisioned peer, a known address — use it, and treat acoustic rendezvous as
+  something you gain later without changing your integration.
+- If they genuinely have nothing in common, `MCL-REFERENCE-DEPLOYMENT-1` is the
+  path, and you are adopting two Candidate profiles knowingly. They are
+  normatively complete and implementable from their text; what they lack is a
+  second implementation and a second transmitter class.
 
 ## 5. How do I select a common bearer, and move to it?
 
