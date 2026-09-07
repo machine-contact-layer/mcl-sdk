@@ -58,7 +58,7 @@ else()
     add_library(mcl_link_dep STATIC
         ${MCL_LINK_DIR}/src/link.c
         ${MCL_LINK_DIR}/src/contact.c
-        ${MCL_LINK_DIR}/src/rendezvous.c
+        ${MCL_LINK_DIR}/src/endpoint_rendezvous.c
         ${MCL_LINK_DIR}/src/handoff.c
         ${MCL_LINK_DIR}/src/control.c
         ${MCL_LINK_DIR}/src/negotiation.c)
@@ -75,7 +75,8 @@ endif()
 add_library(mcl_sdk STATIC
     src/sdk.c
     src/conformance.c
-    src/rendezvous.c)
+    src/rendezvous.c
+    src/machine.c)
 # Build-tree include path. The install-interface path is added in the install
 # section, which is the only configuration that can export this target.
 target_include_directories(mcl_sdk PUBLIC
@@ -100,6 +101,14 @@ if(MCL_SDK_BUILD_TESTS)
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
     add_test(NAME mcl_sdk_conformance COMMAND mcl_sdk_test_conformance)
+
+    add_executable(mcl_sdk_test_machine tests/test_machine.c)
+    target_link_libraries(mcl_sdk_test_machine PRIVATE mcl_sdk)
+    set_target_properties(mcl_sdk_test_machine PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+    add_test(NAME mcl_sdk_machine COMMAND mcl_sdk_test_machine)
 
     add_executable(mcl_sdk_test_rendezvous tests/test_rendezvous.c)
     target_link_libraries(mcl_sdk_test_rendezvous PRIVATE mcl_sdk)

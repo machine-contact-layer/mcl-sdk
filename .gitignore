@@ -8,6 +8,7 @@ hardware/esp32-dual-peer/build/
 # build-manifest.txt is regenerated per build and names absolute local paths.
 hardware/dfr1154-autonomous-node/build/
 hardware/dfr1154-autonomous-node/build-manifest.txt
+hardware/dfr1154-autonomous-node/spike-ble-memory/build-manifest.txt
 
 # .NET build output for the host harness
 tools/dual-transport-peer/bin/

@@ -50,38 +50,64 @@ instead of silently becoming untrue.
 
 ## Memory, which decided the design
 
-Measured on this tree, not estimated:
+Measured on this tree, not estimated, and measured again with a BLE stack
+linked in. The full campaign is in [`spike-ble-memory/`](spike-ble-memory/);
+three results shape this firmware.
+
+**One union arena, not two buffers.** The receive path needs the listener's
+window *and* the modem's scratch at the same time. The transmit path needs
+neither -- only a waveform. Sized separately they are 209 988 bytes and the
+image does not link with a BLE stack:
 
 ```
-AP listener window, 17-byte max payload    47 360 samples    92 KB
-modem receive scratch                      76 868 bytes      75 KB
-modulating a 17-byte object                66 560 samples   130 KB
+ld: section `.dram0.bss' will not fit in region `dram0_0_seg'
 ```
 
-Those, plus a Wi-Fi stack, plus a BLE stack, do not fit in roughly 320 KB of
-internal DRAM. The built image confirms it:
+Sized as one block by the larger **use** rather than the sum, they fit:
 
 ```
-Global variables use 271680 bytes (82%) of dynamic memory,
-leaving 56000 bytes for local variables. Maximum is 327680 bytes.
+receiving     window 94 720 + modem scratch 76 868  =  171 588   <- the larger
+transmitting  waveform for a 17-byte object         =  133 120
+
+arena                                                  171 588 bytes
 ```
 
-That is **with Wi-Fi and the HTTP server, and without BLE**. Two consequences,
-and the second is the interesting one:
+Transmit and reception never overlap -- while this machine's speaker is driven
+its microphone hears its own emission and nothing else, which is why
+`mcl_rdv_platform_t` has `self_transmitting` at all -- so the waveform is
+allowed to sit on top of both, with the listener reset either side. The cost is
+any frame half-buffered when we start talking, which the physics was going to
+take anyway.
 
-- **One arena, not two buffers.** Transmit and receive never overlap — while
-  this machine's speaker is driven its microphone hears its own emission and
-  nothing else, which is why `mcl_rdv_platform_t` has `self_transmitting` at
-  all. So one 130 KB arena is the listener's window and is repurposed for
-  modulation around a transmission, with the listener reset either side. The
-  cost is any frame half-buffered when we start talking, which the physics was
-  going to take anyway.
+**The arena is static, and the comfortable option was measured and rejected.**
+On the heap it is far roomier: BLE even comes up with Wi-Fi still running.
+Then the node has to listen again and cannot -- after the radios have run,
+265 KB free contains no 168 KB block, and tearing the whole BLE stack down does
+not repair it. A node that can listen once and never again is not a node.
 
-- **Quiescing Wi-Fi during a run is not tidiness, it is the memory budget.**
-  The `quiesce_wifi` option was added because a control plane on the air during
-  an exchange contaminates the evidence. The measurement above says it is also
-  how BLE gets enough DRAM to come up at all. The honesty requirement and the
-  physical constraint happen to want the same thing.
+**Wi-Fi and BLE are exclusive here, and Wi-Fi does not give back what it
+takes.** `BLEDevice::init()` is *refused* with the SoftAP up in this layout.
+And a shutdown returns only part of the heap: 113 468 bytes free at boot,
+54 796 with the SoftAP up, 92 156 after it is taken down -- about 21 KB stays
+with the network stack underneath the driver, and `esp_wifi_deinit()` answers
+`ESP_ERR_WIFI_NOT_INIT` because the driver has already gone.
+
+That 21 KB is the difference between having a BLE phase and not having one, so
+**arming restarts the board**: the configuration goes to RTC memory and the node
+boots into the run with Wi-Fi never initialised. Every run therefore has the
+same memory state whichever control plane armed it. The alternative -- "arm
+over serial for BLE runs and over HTTP for the rest" -- makes the result depend
+on the instrument, which is the class of mistake this rig exists to avoid.
+
+Measured on the shipping firmware, holding a live GATT connection:
+
+```
+static (link time)                 238 580 bytes, 72% of DRAM
+boot, Wi-Fi never started           87 840 free
+BLE up                              16 124 free    largest 8 180
+advertising                         12 116 free    largest 7 668
+connection + a 3-fragment frame in and out         rc=0
+```
 
 **PSRAM is not used.** The board has 8 MB and it is the obvious way out.
 Experiment 008 declined it for a reason that still holds: the correlation inner
@@ -90,19 +116,88 @@ project has never verified the QSPI/OPI mode option for this part. A rig that
 boots differently depending on a board option nobody checked is not an
 instrument.
 
+## Phases
+
+Two radios that cannot be up together make "which one is up now"
+protocol-visible rather than bookkeeping, so it is a state:
+
+```
+CONTROL     Wi-Fi + HTTP up. Armed from here. No MCL traffic.
+QUIESCE     Wi-Fi down, before either radio is asked for anything.
+RENDEZVOUS  AP-BOOTSTRAP-1: PRESENCE, contention, OFFER / ACCEPT.
+ACTIVATE    BLE-ACTIVATE-1: the offerer advertises, the acceptor scans.
+VALIDATE    PATH_CHALLENGE / PATH_RESPONSE on the candidate.
+POLICY      admit or refuse, before the first irrevocable act on each side.
+MIGRATE     COMMIT / CONFIRM.
+TEARDOWN    radios down.
+REPORT      Wi-Fi + HTTP restored, result readable.
+```
+
+## Roles are read off the wire
+
+`BLE-ACTIVATE-1` section 2, implemented literally. Only `TRANSPORT_OFFER`
+carries an `endpoint_token` and it is the offerer's own, so the offerer is the
+only peer that can be *found*:
+
+| peer | knows | therefore |
+|---|---|---|
+| offerer | its own token | **advertises**, GATT peripheral |
+| acceptor | the offerer's token | **scans and connects**, GATT central |
+
+Nothing in this firmware chooses a role. `MCL_RDV_EVENT_BEARER_AGREED` carries
+`peer_endpoint_token`, which is non-zero exactly for the peer that received an
+offer, and that is the discriminator.
+
+The scanner matches on the service UUID **and** the full eight-byte beacon, by
+walking the raw advertising payload rather than asking the library for
+"service data" -- and `/api/scan-record` returns those bytes, so "the two
+implementations encode the same AD structure" is checkable instead of asserted.
+An advertisement matching the UUID but not the beacon is counted separately as
+`scan_uuid_only`: right protocol, wrong transaction.
+
 ## HTTP API
 
 Reachable on the node's SoftAP (`mcl-auto-node`). Deliberately small — no
 framework, no bundle, no camera, no TLS.
 
 ```
-GET  /api/status     node, majors, run state, heap, arena, log depth
-POST /api/config     scenario, duration_ms, band_low_hz, band_high_hz,
-                     emit_gain_pct, quiesce_wifi        (no peer fields)
-POST /api/run        arm and start
-POST /api/stop       stop
-GET  /api/result     counters, failure, values[] with provenance, zero_prior
-GET  /api/log        NDJSON, one record per line
+GET  /api/status       node, majors, run state, phase, heap, radios, log depth
+POST /api/config       scenario, duration_ms, band_low_hz, band_high_hz,
+                       emit_gain_pct, quiesce_wifi, candidate_transport,
+                       admit_policy                       (no peer fields)
+POST /api/run          arm; the node RESTARTS into the run
+POST /api/stop         stop
+GET  /api/result       counters, failure, values[] with provenance, zero_prior
+GET  /api/scan-record  the raw advertising payload the scanner matched
+GET  /api/log          NDJSON, one record per line
+```
+
+`candidate_transport` names a **medium**, not a peer: 3 for BLE, 2 for IP.
+Which bearer a deployment offers as its continuation is a deployment-profile
+decision and says nothing about who is on the other end.
+
+## Serial control plane
+
+Same standing as HTTP and the same fence. Useful for a board on a cable, and
+for watching a run as it happens rather than polling it.
+
+```
+CONFIG <scenario> <duration_ms> <band_low> <band_high> <gain> <candidate> <admit>
+ARM            arm; the node restarts into the run
+STOP           stop a run
+STATUS         state, phase, heap, which radios are up
+RESULT         counters, and every tagged value with its provenance
+LOG            the whole ring
+BLETEST <1|2>  diagnostic: bring BLE up as advertiser (1) or scanner (2)
+BLEDOWN        tear it down again
+WIFI ON | WIFI OFF
+```
+
+[`node-serial.ps1`](node-serial.ps1) drives it:
+
+```powershell
+.\node-serial.ps1 -Reset -Command 'CONFIG 2 120000 0 0 100 3 1' -Then ARM -Listen 130
+.\node-serial.ps1 -Command RESULT
 ```
 
 The log is a fixed ring with an explicit `log_dropped` counter: a log that
@@ -111,10 +206,20 @@ that looks complete.
 
 ## Scenarios
 
-| id | name | emits sound |
-|---|---|---|
-| 0 | listen only — reports QUIET / HEARD / CONTACT distinctly | **no** |
-| 1 | announce and listen — PRESENCE at a randomised cadence | **yes** |
+| id | name | emits sound | radios |
+|---|---|---|---|
+| 0 | listen only — reports QUIET / HEARD / CONTACT distinctly | **no** | mic |
+| 1 | announce and listen — PRESENCE at a randomised cadence | **yes** | mic + speaker |
+| 2 | **zero-prior rendezvous** — the whole path, through migration | **yes** | mic + speaker + BLE |
+| 3 | MCL-IP carriage, as a responder on a port of its own | no | Wi-Fi |
+| 4 | BLE-ACTIVATE diagnostic: advertise a compiled-in token | no | BLE |
+| 5 | BLE-ACTIVATE diagnostic: scan for that token | no | BLE |
+
+Scenarios 4 and 5 are **not zero-prior and report themselves as such**: the
+token is a constant in the firmware rather than a value learned from the air,
+so it is tagged `CONFIGURED` and `/api/result` says `zero_prior: false`. They
+exist to check that two implementations encode the same 26 advertising bytes,
+which is a different question from whether two strangers found each other.
 
 Scenario 0 establishes the room's own noise before anything is concluded from a
 failure, and is safe to run at any time. Scenario 1 is audible: it is a
@@ -160,8 +265,22 @@ untouched, which is what makes it reversible. Restore with
 
 ## Status
 
-The firmware builds and the memory budget above is measured from that build.
-The rendezvous coordinator, the BLE-ACTIVATE candidate hooks and the MCL-IP
-carriage scenario are **not yet wired in** — the arena and radio budget had to
-be settled first, because it decides whether they can coexist, and it does not
-allow Wi-Fi and BLE up together with the audio buffers allocated.
+The rendezvous coordinator, the `BLE-ACTIVATE-1` roles, `BLE-GATT-1` carriage,
+the candidate callbacks, local policy and the MCL-IP scenario are wired in, and
+the firmware runs the phase machine above with nothing attached.
+
+Verified on hardware so far:
+
+- the image links and boots at 238 580 bytes of static RAM;
+- an armed run restarts into itself with Wi-Fi never initialised, and the BLE
+  stack comes up in that state;
+- the advertisement is exactly `BLE-ACTIVATE-1` section 3 — checked from a host
+  with no shared code, in
+  [`mcl-ble/hardware/host-ble-probe/`](../../../mcl-ble/hardware/host-ble-probe/);
+- a 40-byte frame crosses the GATT link as three fragments at the 23-byte
+  minimum MTU, in both directions, byte-identical.
+
+Not established here, and not claimable until it is: a **complete zero-prior
+run** — acoustic first contact through BLE activation to `CONTACT_MIGRATED`
+— needs a second machine with a microphone, a speaker and a BLE radio. That is
+the second builder, not this board.

@@ -17,6 +17,17 @@
 #>
 param(
     [string]$ArduinoCli = 'C:\Program Files\Arduino CLI\arduino-cli.exe',
+    # Which sketch to build. `node` is the deliverable. `spike` is the BLE
+    # memory feasibility measurement that decided whether this board can hold
+    # a BLE stack next to the audio arena at all; it stays buildable so the
+    # measurement can be REPEATED rather than quoted from a comment.
+    [ValidateSet('node', 'spike')]
+    [string]$Sketch = 'node',
+    # Preprocessor defines for a measurement sweep, e.g.
+    #   -Defines '-DSPIKE_ARENA_SAMPLES=47360 -DSPIKE_WITH_SCRATCH=0'
+    # Only -D flags belong here. Include paths do NOT: passing them through
+    # compiler.*.extra_flags is what broke the first version of this script.
+    [string]$Defines = '',
     [switch]$KeepStaging
 )
 
@@ -28,6 +39,8 @@ $Root      = (Resolve-Path (Join-Path $scriptDir '..\..\..')).Path
 $WireDir   = Join-Path $Root 'mcl-wire'
 $LinkDir   = Join-Path $Root 'mcl-link'
 $ApDir     = Join-Path $Root 'mcl-ap'
+$BleDir    = Join-Path $Root 'mcl-ble'
+$IpDir     = Join-Path $Root 'mcl-ip'
 
 # CDCOnBoot=cdc is not optional: without it `Serial` is UART0 rather than the
 # native USB CDC/JTAG the board enumerates as (VID 303A, PID 1001), and every
@@ -61,27 +74,58 @@ Write-Host "factory backup present" -ForegroundColor Green
 # <sketch>/src, which the build compiles recursively. No -I flag is needed,
 # and none is used -- passing include paths through compiler.*.extra_flags is
 # what broke the first version of this script.
-$staging = Join-Path ([System.IO.Path]::GetTempPath()) 'mcl-auto-node-staging'
+$stagingName = if ($Sketch -eq 'spike') { 'mcl-ble-spike-staging' } else { 'mcl-auto-node-staging' }
+$sketchSource = if ($Sketch -eq 'spike') {
+    Join-Path $scriptDir 'spike-ble-memory\spike_ble_memory.ino'
+} else {
+    Join-Path $scriptDir 'dfr1154_autonomous_node\dfr1154_autonomous_node.ino'
+}
+$staging = Join-Path ([System.IO.Path]::GetTempPath()) $stagingName
 if (Test-Path -LiteralPath $staging) { Remove-Item -Recurse -Force $staging }
 New-Item -ItemType Directory -Force -Path $staging | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $staging 'mcl') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $staging 'src') | Out-Null
 
 # The staging directory is named for the sketch, so the image is named for it.
-$stagedIno = Join-Path $staging 'mcl-auto-node-staging.ino'
-Copy-Item (Join-Path $scriptDir 'dfr1154_autonomous_node\dfr1154_autonomous_node.ino') $stagedIno
+$stagedIno = Join-Path $staging ($stagingName + '.ino')
+Copy-Item $sketchSource $stagedIno
 
+# The whole stack is staged for both sketches, not the acoustic half only. The
+# node has to run the rendezvous coordinator and both bindings, and the spike
+# is worthless if it measures a smaller program than the node will be.
 $headers = @(
     (Join-Path $WireDir 'include\mcl\wire.h'),
     (Join-Path $LinkDir 'include\mcl\link.h'),
+    (Join-Path $LinkDir 'include\mcl\contact.h'),
+    (Join-Path $LinkDir 'include\mcl\handoff.h'),
+    (Join-Path $LinkDir 'include\mcl\control.h'),
+    (Join-Path $LinkDir 'include\mcl\negotiation.h'),
+    (Join-Path $LinkDir 'include\mcl\endpoint_rendezvous.h'),
+    (Join-Path $WireDir 'include\mcl\extension.h'),
     (Join-Path $ApDir   'include\mcl\ap_modem.h'),
-    (Join-Path $ApDir   'include\mcl\ap_listen.h')
+    (Join-Path $ApDir   'include\mcl\ap_listen.h'),
+    (Join-Path $sdkRoot 'include\mcl\sdk.h'),
+    (Join-Path $sdkRoot 'include\mcl\rendezvous.h'),
+    (Join-Path $sdkRoot 'include\mcl\machine.h'),
+    (Join-Path $BleDir  'include\mcl\ble_binding.h'),
+    (Join-Path $IpDir   'include\mcl\ip_binding.h')
 )
 $sources = @(
     (Join-Path $WireDir 'src\wire.c'),
     (Join-Path $LinkDir 'src\link.c'),
+    (Join-Path $LinkDir 'src\contact.c'),
+    (Join-Path $LinkDir 'src\handoff.c'),
+    (Join-Path $LinkDir 'src\control.c'),
+    (Join-Path $LinkDir 'src\negotiation.c'),
+    (Join-Path $LinkDir 'src\endpoint_rendezvous.c'),
+    (Join-Path $WireDir 'src\extension.c'),
     (Join-Path $ApDir   'src\ap_modem.c'),
-    (Join-Path $ApDir   'src\ap_listen.c')
+    (Join-Path $ApDir   'src\ap_listen.c'),
+    (Join-Path $sdkRoot 'src\sdk.c'),
+    (Join-Path $sdkRoot 'src\rendezvous.c'),
+    (Join-Path $sdkRoot 'src\machine.c'),
+    (Join-Path $BleDir  'src\ble_binding.c'),
+    (Join-Path $IpDir   'src\ip_binding.c')
 )
 
 foreach ($h in $headers) {
@@ -105,7 +149,11 @@ if (-not (Test-Path -LiteralPath $ArduinoCli -PathType Leaf)) {
 }
 
 # ------------------------------------------------------------------ compile
-$outDir = Join-Path $scriptDir 'build\out'
+$outDir = if ($Sketch -eq 'spike') {
+    Join-Path $scriptDir 'build\spike-out'
+} else {
+    Join-Path $scriptDir 'build\out'
+}
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 Write-Host ''
@@ -115,12 +163,19 @@ Write-Host "Compiling for $fqbn" -ForegroundColor Cyan
 # would abort a build that actually succeeded. The exit code is the authority.
 $previousPreference = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
-& $ArduinoCli compile --fqbn $fqbn --output-dir $outDir --warnings default $staging
+if ([string]::IsNullOrWhiteSpace($Defines)) {
+    & $ArduinoCli compile --fqbn $fqbn --output-dir $outDir --warnings default $staging
+} else {
+    Write-Host "extra defines: $Defines"
+    & $ArduinoCli compile --fqbn $fqbn --output-dir $outDir --warnings default `
+        --build-property "compiler.cpp.extra_flags=$Defines" `
+        --build-property "compiler.c.extra_flags=$Defines" $staging
+}
 $compileExit = $LASTEXITCODE
 $ErrorActionPreference = $previousPreference
 if ($compileExit -ne 0) { throw "arduino-cli compile failed with exit code $compileExit" }
 
-$bin = Join-Path $outDir 'mcl-auto-node-staging.ino.bin'
+$bin = Join-Path $outDir ($stagingName + '.ino.bin')
 if (-not (Test-Path -LiteralPath $bin -PathType Leaf)) {
     throw "Expected application image not produced: $bin"
 }
@@ -133,7 +188,11 @@ Write-Host "APP_IMAGE=$bin" -ForegroundColor Green
 Write-Host "APP_SHA256=$binHash"
 Write-Host "APP_BYTES=$binBytes"
 
-$manifestPath = Join-Path $scriptDir 'build-manifest.txt'
+$manifestPath = if ($Sketch -eq 'spike') {
+    Join-Path $scriptDir 'spike-ble-memory\build-manifest.txt'
+} else {
+    Join-Path $scriptDir 'build-manifest.txt'
+}
 $lines = @(
     'MCL autonomous node firmware build',
     "built: $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')",

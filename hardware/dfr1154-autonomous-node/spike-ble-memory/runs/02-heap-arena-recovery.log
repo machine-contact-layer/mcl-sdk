@@ -1,0 +1,38 @@
+DFR1154 BLE memory feasibility spike -- run 2
+captured from COM3 at 921600 baud, 2026-09-07
+
+image sha256 DAD3210B3FE6991FAC0081025122B85D1A3615F62BCD498941E26685392D6FE2
+build       -DSPIKE_ARENA_SAMPLES=16 -DSPIKE_WITH_SCRATCH=0 -DSPIKE_HEAP_ARENA=1
+layout      THE SAME 171 588 BYTES TAKEN FROM THE HEAP and released before the
+            radios come up
+link        Global variables use 50268 bytes (15%) of dynamic memory,
+            leaving 277412 bytes for local variables. Maximum is 327680 bytes.
+
+SPIKE BEGIN dfr1154 ble memory feasibility
+SPIKE STATIC arena=32 scratch=0 listener=136 node=124 rdv=288 reasm=1056 total=1636
+SPIKE STAGE boot               free=284652 largest=233460 min_free_ever=279280 internal=284652
+SPIKE NOTE heap arena 171588 bytes: allocated
+SPIKE STAGE arena_on_heap      free=112616 largest=61428 min_free_ever=112504 internal=112616
+SPIKE STAGE wifi_softap_http   free=55032 largest=31732 min_free_ever=54664 internal=55032
+SPIKE STAGE arena_released     free=227068 largest=172020 min_free_ever=54664 internal=227068
+SPIKE STAGE ble_init_wifi_up   free=156884 largest=116724 min_free_ever=54664 internal=156884
+SPIKE NOTE ble_init_with_wifi_up=ok
+SPIKE STAGE ble_gatt_server    free=153828 largest=112628 min_free_ever=54664 internal=153828
+SPIKE STAGE ble_advertising    free=152908 largest=112628 min_free_ever=54664 internal=152908
+SPIKE STAGE ble_scanning       free=152676 largest=112628 min_free_ever=54664 internal=152676
+SPIKE STAGE ble_client_alloc   free=151928 largest=110580 min_free_ever=54664 internal=151928
+SPIKE STAGE wifi_down_after_ble free=190612 largest=110580 min_free_ever=54664 internal=190612
+SPIKE NOTE arena re-acquire after BLE: REFUSED
+SPIKE STAGE arena_reacquire_REFUSED free=190612 largest=110580 min_free_ever=54664 internal=190612
+SPIKE NOTE split re-acquire window=ok scratch=REFUSED
+SPIKE STAGE arena_split_REFUSED free=94352 largest=31732 min_free_ever=54664 internal=94352
+SPIKE STAGE ble_deinit         free=265808 largest=112628 min_free_ever=54664 internal=265808
+SPIKE NOTE arena re-acquire after BLE deinit: REFUSED
+SPIKE STAGE arena_after_ble_deinit_REFUSED free=265808 largest=112628 min_free_ever=54664 internal=265808
+SPIKE RESULT ble=UP wifi_coexist=yes final_free=265808 final_largest=112628 verdict=FITS
+
+The last four lines are the reason this layout was NOT adopted. With the arena
+on the heap the radios have room -- BLE even comes up with Wi-Fi still running
+-- but the arena cannot be taken back afterwards: 265 808 bytes free and the
+largest single block is 112 628. Tearing the whole BLE stack down does not
+repair it. A node that could listen once and never again is not a node.

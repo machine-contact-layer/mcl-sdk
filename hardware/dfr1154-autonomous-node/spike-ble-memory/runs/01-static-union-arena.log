@@ -1,0 +1,28 @@
+DFR1154 BLE memory feasibility spike -- run 1
+captured from COM3 at 921600 baud, 2026-09-07
+
+image sha256 90F5C8543D4A2968433545512E735CF2E452D09D9C8BFC592782A8DF1F4856CC
+build       -DSPIKE_ARENA_SAMPLES=85794 -DSPIKE_WITH_SCRATCH=0
+layout      ONE STATIC UNION ARENA of 171 588 bytes in .bss
+link        Global variables use 221820 bytes (67%) of dynamic memory,
+            leaving 105860 bytes for local variables. Maximum is 327680 bytes.
+
+SPIKE BEGIN dfr1154 ble memory feasibility
+SPIKE STATIC arena=171588 scratch=0 listener=136 node=124 rdv=288 reasm=1056 total=173192
+SPIKE STAGE boot               free=113468 largest=61428 min_free_ever=107964 internal=113468
+SPIKE STAGE wifi_softap_http   free=54796 largest=31732 min_free_ever=54424 internal=54796
+SPIKE STAGE ble_init_wifi_up_FAILED free=52488 largest=19444 min_free_ever=14032 internal=52488
+SPIKE NOTE ble_init_with_wifi_up=refused
+SPIKE STAGE wifi_down          free=92156 largest=27636 min_free_ever=14032 internal=92156
+SPIKE NOTE esp_wifi_deinit rc=12289 (refused)
+SPIKE STAGE wifi_deinit_REFUSED free=92156 largest=27636 min_free_ever=14032 internal=92156
+SPIKE STAGE ble_init_wifi_down free=21832 largest=13300 min_free_ever=14032 internal=21832
+SPIKE STAGE ble_gatt_server    free=18748 largest=10740 min_free_ever=14032 internal=18748
+SPIKE STAGE ble_advertising    free=17816 largest=9716 min_free_ever=14032 internal=17816
+SPIKE STAGE ble_scanning       free=17584 largest=9204 min_free_ever=14032 internal=17584
+SPIKE STAGE ble_client_alloc   free=16828 largest=8692 min_free_ever=14032 internal=16828
+SPIKE RESULT ble=UP wifi_coexist=no final_free=16828 final_largest=8692 verdict=TIGHT
+
+rc=12289 is 0x3001, ESP_ERR_WIFI_NOT_INIT: WiFi.mode(WIFI_OFF) has already
+deinitialised the driver, so the ~21 KB it does not return is not the Wi-Fi
+driver's and cannot be recovered by deinitialising it again.
