@@ -14,7 +14,7 @@
  * correct and it is not what an integrator wants to hold.
  *
  * Wiring it up means initialising a node AND a coordinator, keeping their two
- * configurations consistent, filling in seven platform callbacks, driving a
+ * configurations consistent, filling in eight platform operations, driving a
  * poll loop, routing received bytes by transport, and -- the part every builder
  * would have written differently -- noticing `BEARER_AGREED` and opening the
  * candidate bearer before the coordinator will emit anything on it. The
@@ -48,7 +48,8 @@
  *
  * THE NUMBER OF OPERATIONS IS THE POINT
  *
- * Seven, and two of those are optional. If porting MCL to a new machine ever
+ * Eight for the reference deployment, and two of those are optional. If
+ * porting MCL to a new machine ever
  * needs fifty, this facade is not finished. See `mcl_platform_t`.
  */
 
@@ -142,7 +143,8 @@ typedef enum {
 /*
  * THE PORTING INTERFACE. Implement these and MCL runs on your machine.
  *
- * Five required operations and two optional ones. Nothing here knows what a
+ * Six required operations and two optional ones for the reference deployment.
+ * Nothing here knows what a
  * socket, a speaker or a radio is, and nothing here is protocol: no operation
  * in this struct builds, parses, sequences or retransmits anything.
  */
@@ -239,7 +241,11 @@ typedef struct {
     int (*policy_admit)(void *user, uint32_t peer_ref, uint8_t transport_id);
 
     void *user;
-} mcl_platform_t;
+} mcl_platform_v1_t;
+
+/* Source-compatible name retained for the v1 line. New ports should spell the
+   version explicitly so a future platform contract cannot change silently. */
+typedef mcl_platform_v1_t mcl_platform_t;
 
 /* ----------------------------------------------------------- the machine */
 
@@ -319,8 +325,11 @@ mcl_machine_status_t mcl_machine_init(mcl_machine_t *machine,
 mcl_machine_status_t mcl_machine_start(mcl_machine_t *machine);
 
 /*
- * Advance the machine and report at most one event. Call it whenever the
- * machine has a moment; there is no required cadence.
+ * Advance the machine and report at most one event. Call it from a regular
+ * timer and again promptly after receive/candidate/policy input. A late poll
+ * directly delays scheduled transmission and timeout handling; the reference
+ * host and embedded integrations use a 10 ms service cadence. This is not a
+ * blocking call and it does not sleep.
  */
 mcl_machine_status_t mcl_machine_poll(mcl_machine_t *machine,
                                       mcl_machine_event_t *out);

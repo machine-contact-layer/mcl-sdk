@@ -49,8 +49,25 @@ machine.
 
 ## 03 Build
 
-You need `mcl-core`, `mcl-wire`, `mcl-link`, `mcl-sdk`, and the binding for each
-bearer you speak (`mcl-ble`, `mcl-ip`, `mcl-ap`). Clone them as siblings.
+The release ships one self-contained developer SDK: one include tree, one
+library, one CMake project. Build it directly:
+
+```sh
+cmake -S mcl-developer-sdk -B build
+cmake --build build
+./build/mcl_first_contact
+```
+
+Maintainers working from the separately governed repositories generate that
+same package, then verify a scratch consumer against it:
+
+```sh
+sh mcl-sdk/packaging/make-developer-sdk.sh /tmp/mcl-developer-sdk
+sh mcl-sdk/packaging/verify-developer-sdk.sh
+```
+
+The multi-repository developer build remains available when changing MCL
+itself:
 
 ```sh
 cmake -S mcl-sdk -B build
@@ -62,10 +79,10 @@ Everything protocol-facing is **freestanding C99** — no heap, no OS, no libc a
 runtime, caller-owned memory. It builds for a microcontroller because it was
 built on one.
 
-To install and consume it from your own project:
+To install the single developer SDK and consume it from your own project:
 
 ```sh
-cmake -S mcl-sdk -B build -DCMAKE_INSTALL_PREFIX=/your/prefix
+cmake -S mcl-developer-sdk -B build -DCMAKE_INSTALL_PREFIX=/your/prefix
 cmake --build build && cmake --install build
 ```
 
@@ -117,7 +134,7 @@ Two machines, two radios, no peer configuration anywhere:
 
 ## 06 Integrate your own platform
 
-**Seven operations. Five required, two optional.** If porting MCL to a machine
+**Eight operations. Six required, two optional.** If porting MCL to a machine
 ever needs fifty, the facade is not finished — that is the standard
 [`include/mcl/machine.h`](include/mcl/machine.h) is written to.
 
@@ -134,7 +151,7 @@ ever needs fifty, the facade is not finished — that is the standard
 
 ```c
 mcl_machine_config_t config;
-mcl_platform_t platform = { /* your seven */ };
+mcl_platform_v1_t platform = { /* your eight operations */ };
 mcl_machine_t machine;
 mcl_machine_event_t event;
 
@@ -144,6 +161,7 @@ mcl_machine_init(&machine, &config, &platform);
 mcl_machine_start(&machine);
 
 for (;;) {
+    /* Service on a regular timer; the reference integrations use 10 ms. */
     mcl_machine_poll(&machine, &event);
     if (event.kind == MCL_MACHINE_EVENT_CONTACT_ESTABLISHED) { /* yours */ }
 

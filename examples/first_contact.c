@@ -69,7 +69,7 @@ static room_t g_room;
 static machine_ctx_t g_ctx[MACHINES];
 static mcl_machine_t g_machine[MACHINES];
 
-/* --------------------------------------------------- the platform: 5 + 2 */
+/* --------------------------------------------------- the platform: 6 + 2 */
 
 static uint32_t plat_clock_ms(void *user)
 {

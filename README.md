@@ -1,13 +1,17 @@
 # MCL SDK
 
-Developer-facing low-level reference SDK for the **Machine Contact Layer**.
+Product-facing reference SDK for the **Machine Contact Layer**. The default
+integration is `mcl/machine.h`: the application supplies platform operations
+and receives contact events; MCL owns discovery, negotiation, validation,
+migration, retries, and cleanup.
 
 The primary reference SDK is a portable C99 implementation designed to run from resource-constrained microcontrollers through embedded systems and hosted applications without changing the protocol contract.
 
 **New here? [`QUICKSTART.md`](QUICKSTART.md)** takes you from a clone to two
 machines in contact in eight steps, through the integration facade in
-[`include/mcl/machine.h`](include/mcl/machine.h): five platform operations, one
-event, and MCL keeps the protocol choreography.
+[`include/mcl/machine.h`](include/mcl/machine.h): six required platform
+operations, two optional operations, and one event stream; MCL keeps the
+protocol choreography.
 
 **Integrating MCL into a product?** [`BUILDER_GUIDE.md`](BUILDER_GUIDE.md) walks
 the ten questions a builder actually asks and is explicit about what MCL does
@@ -94,6 +98,10 @@ cannot tell the difference **MUST** return `> 0`.
 
 ## Public API Overview
 
+The normal OEM surface is [`mcl/machine.h`](include/mcl/machine.h), documented
+in [`PORTING.md`](PORTING.md). The node, Wire, Link, and handoff APIs below are
+the advanced surface for custom deployments and independent implementations.
+
 ### Types and Status Codes
 
 ```c
@@ -116,7 +124,7 @@ enum {
 };
 ```
 
-### Node Model
+### Advanced Node Model
 
 ```c
 typedef struct {

@@ -36,11 +36,12 @@ in code as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, not only in prose. See
 
 ## 1. How do I install MCL?
 
-Eight repositories; you need `mcl-core`, `mcl-wire`, `mcl-link`, `mcl-sdk`, plus
-the binding for each bearer you speak.
+Use the self-contained `mcl-developer-sdk` release package. Its one CMake target
+contains Wire, Link, and the high-level SDK; a product consumer does not clone
+or install repositories in dependency order.
 
 ```sh
-cmake -S mcl-sdk -B build -DCMAKE_INSTALL_PREFIX=/your/prefix
+cmake -S mcl-developer-sdk -B build -DCMAKE_INSTALL_PREFIX=/your/prefix
 cmake --build build && cmake --install build
 ```
 
@@ -51,9 +52,10 @@ find_package(mcl_sdk REQUIRED)
 target_link_libraries(my_machine PRIVATE mcl::mcl_sdk)
 ```
 
-`packaging/install-and-verify.sh` builds an external consumer that finds
-everything through `find_package` on a clean prefix, so a missing public header
-or an unexported dependency fails there rather than in your build.
+`packaging/verify-developer-sdk.sh` generates exactly that package, installs it
+into an empty prefix, and builds a scratch consumer using only
+`find_package(mcl_sdk)`. It also fails if the consumer reaches below
+`mcl/machine.h` into Wire, Link, rendezvous, or migration APIs.
 
 Everything protocol-facing is **freestanding C99**: no heap, no libc
 dependency, caller-owned structs. It builds for a microcontroller because it was
@@ -337,7 +339,7 @@ Three claims exist. Pick the honest one:
 | Claim | Means |
 |---|---|
 | `MCL Base 1` | Given a shared bearer, we interoperate. **Claimable today.** |
-| `MCL Stranger-Contact 1` | We can meet a machine we have never met. **Nobody can claim this yet** — `AP-BOOTSTRAP-1` does not exist. |
+| `MCL Stranger-Contact 1` | We can meet a machine we have never met. Claimable only with `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE` until AP-BOOTSTRAP-1 and BLE-ACTIVATE-1 complete their independent physical qualification. |
 | `MCL Secure-Stranger 1` | …and authenticate it. Reserved name, not specified. |
 
 A machine with no microphone may truthfully claim Base 1 forever. That is a

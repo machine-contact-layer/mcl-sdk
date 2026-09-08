@@ -43,7 +43,7 @@ build_and_install() {
           -DMCL_LINK_BUILD_TESTS=OFF \
           -DMCL_SDK_BUILD_TESTS=OFF > "$WORK/$name-configure.log" 2>&1 || {
         echo "CONFIGURE FAILED for $name"; tail -30 "$WORK/$name-configure.log"; exit 1; }
-    cmake --build "$WORK/build-$name" --target install -j 4 \
+    cmake --build "$WORK/build-$name" --config Release --target install -j 4 \
           > "$WORK/$name-build.log" 2>&1 || {
         echo "BUILD/INSTALL FAILED for $name"; tail -30 "$WORK/$name-build.log"; exit 1; }
     echo "    ok"
@@ -82,13 +82,29 @@ cmake -S "$ROOT/mcl-sdk/packaging/external-consumer" -B "$WORK/build-consumer" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_PREFIX_PATH="$PREFIX" > "$WORK/consumer-configure.log" 2>&1 || {
     echo "CONSUMER CONFIGURE FAILED"; tail -40 "$WORK/consumer-configure.log"; exit 1; }
-cmake --build "$WORK/build-consumer" -j 4 > "$WORK/consumer-build.log" 2>&1 || {
+cmake --build "$WORK/build-consumer" --config Release -j 4 > "$WORK/consumer-build.log" 2>&1 || {
     echo "CONSUMER BUILD FAILED"; tail -40 "$WORK/consumer-build.log"; exit 1; }
 echo "    ok"
 
 echo
 echo "--- running the external consumer"
-"$WORK/build-consumer/mcl_external_consumer"
+CONSUMER_EXE=
+for candidate in \
+    "$WORK/build-consumer/mcl_external_consumer" \
+    "$WORK/build-consumer/mcl_external_consumer.exe" \
+    "$WORK/build-consumer/Release/mcl_external_consumer.exe"
+do
+    if [ -f "$candidate" ]; then
+        CONSUMER_EXE=$candidate
+        break
+    fi
+done
+if [ -z "$CONSUMER_EXE" ]; then
+    echo "FAILED: built external consumer executable was not found"
+    find "$WORK/build-consumer" -maxdepth 2 -type f | sed 's/^/      /'
+    exit 1
+fi
+"$CONSUMER_EXE"
 
 echo
 echo "--- negative control: the consumer MUST fail without the prefix"
@@ -109,6 +125,7 @@ echo
 echo "=== PACKAGING VERIFICATION PASSED ==="
 echo
 echo "What this does NOT establish:"
-echo "  - Nothing about MSVC packaging. This script needs a POSIX shell."
+echo "  - It uses the compiler selected by CMake; run it under each release"
+echo "    toolchain rather than treating one successful compiler as all of them."
 echo "  - Nothing about the protocol. It measures whether the library can be"
 echo "    consumed, not whether it is correct."
