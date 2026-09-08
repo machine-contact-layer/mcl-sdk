@@ -74,6 +74,11 @@ typedef struct room_s {
     int pending_open;
     int refuse_open;
     int refuse_policy;
+    /* Deliver only this many candidate frames, then destroy the rest while
+       reporting successful transmission.  Two admits PATH_CHALLENGE and
+       PATH_RESPONSE, then loses COMMIT and every retry. */
+    int limit_candidate_delivery;
+    unsigned candidate_deliveries_left;
 } room_t;
 
 typedef struct {
@@ -126,6 +131,13 @@ static int32_t plat_send(void *user, uint8_t transport_id,
     }
     if (transport_id == MCL_CONTACT_TRANSPORT_IP && !room->carries_ip) {
         return -1;
+    }
+    if (transport_id != MCL_CONTACT_TRANSPORT_AP &&
+        room->limit_candidate_delivery) {
+        if (room->candidate_deliveries_left == 0u) {
+            return 0;
+        }
+        room->candidate_deliveries_left--;
     }
     t = &room->tx[room->count++];
     memset(t, 0, sizeof(*t));
@@ -437,6 +449,8 @@ static void test_two_strangers(void)
                   "and the offering side was given none, as the wire carries none");
             check(g_room.last_open_local_token[offerer] != 0u,
                   "the offering side was given ITS OWN token, which it must advertise");
+            check(g_room.last_open_local_token[acceptor_side] == 0u,
+                  "the accepting side was not given a stale local token");
         }
     }
     check(g_room.last_open_transport[0] == MCL_CONTACT_TRANSPORT_BLE ||
@@ -606,6 +620,51 @@ static void test_candidate_refused(void)
     check(!established, "and no contact is claimed");
 }
 
+/*
+ * CHALLENGE AND RESPONSE ARRIVE; COMMIT AND EVERY RETRY DISAPPEAR.
+ *
+ * Before this case existed, the controller eventually reported loss but the
+ * acceptor remained VALIDATING forever.  The facade also retained both opened
+ * platform bearers because a pre-contact abandonment has no CONTACT_LOST
+ * event.  A new rendezvous then leaked or overwrote the old handle.
+ */
+static void test_lost_commit_releases_both_candidates(void)
+{
+    mcl_machine_config_t ca, cb;
+    mcl_platform_t pa, pb;
+    mcl_machine_event_t ev[MAX_NODES];
+    unsigned i;
+
+    printf("[machine] a vanished candidate path releases both platform opens\n");
+    room_reset();
+    g_node_count = 2u;
+    g_room.limit_candidate_delivery = 1;
+    g_room.candidate_deliveries_left = 2u;
+
+    base_platform(&pa, &g_peers[0], 1);
+    base_platform(&pb, &g_peers[1], 1);
+    (void)mcl_machine_config_deployment(&ca, MCL_DEPLOYMENT_REFERENCE_1,
+                                        0x91919191u, MCL_CONTACT_ROLE_INITIATOR);
+    (void)mcl_machine_config_deployment(&cb, MCL_DEPLOYMENT_REFERENCE_1,
+                                        0xA2A2A2A2u, MCL_CONTACT_ROLE_RESPONDER);
+    (void)mcl_machine_init(&g_machines[0], &ca, &pa);
+    (void)mcl_machine_init(&g_machines[1], &cb, &pb);
+    (void)mcl_machine_start(&g_machines[0]);
+    (void)mcl_machine_start(&g_machines[1]);
+
+    for (i = 0u; i < 12000u &&
+         (g_room.closes[0] == 0u || g_room.closes[1] == 0u); ++i) {
+        tick(10u, ev);
+    }
+
+    check(g_room.opens[0] > 0u && g_room.opens[1] > 0u,
+          "both peers opened the agreed candidate");
+    check(g_room.candidate_deliveries_left == 0u,
+          "PATH_CHALLENGE and PATH_RESPONSE crossed before the break");
+    check(g_room.closes[0] > 0u && g_room.closes[1] > 0u,
+          "both opened candidates were released after bounded failure");
+}
+
 static void test_names(void)
 {
     printf("[machine] names exist for a log to print\n");
@@ -625,6 +684,7 @@ int main(void)
     test_policy_callback_and_refusal();
     test_no_common_bearer();
     test_candidate_refused();
+    test_lost_commit_releases_both_candidates();
     test_names();
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);

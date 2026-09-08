@@ -142,13 +142,13 @@
 #include <WebServer.h>
 #include "ESP_I2S.h"
 #include "esp_heap_caps.h"
+#include "esp_system.h"
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
-#include <BLE2902.h>
 
 #include "mcl/ap_listen.h"
 #include "mcl/ap_modem.h"
@@ -408,6 +408,40 @@ RTC_NOINIT_ATTR uint32_t g_armed_magic;
 RTC_NOINIT_ATTR uint8_t  g_armed_blob[32];
 constexpr uint32_t kArmedMagic = 0x4D434C41u;   /* "MCLA" */
 
+/*
+ * THE POST-MORTEM. A node with no serial cable cannot say "I crashed".
+ *
+ * This board is driven over its own SoftAP for exactly the runs that cannot
+ * coexist with a USB host, which means the operator sees the node only after
+ * it has come back. A run that panics and a run that finished both present as
+ * RUN_IDLE with a short uptime and an empty log, and reading the first as the
+ * second is how a rig manufactures a passing result out of a crash.
+ *
+ * So the live run footprint is mirrored into RTC memory as it changes, and
+ * read back one boot later beside esp_reset_reason(). If the previous boot was
+ * inside a run and did not reach an ending, the node says so on /api/status
+ * and the evidence is thrown away rather than filed.
+ */
+RTC_NOINIT_ATTR uint32_t g_post_magic;
+RTC_NOINIT_ATTR uint8_t  g_post_scenario;
+RTC_NOINIT_ATTR uint8_t  g_post_phase;
+RTC_NOINIT_ATTR uint8_t  g_post_run_state;
+RTC_NOINIT_ATTR uint8_t  g_post_ble_role;
+RTC_NOINIT_ATTR uint32_t g_post_uptime_ms;
+RTC_NOINIT_ATTR uint32_t g_post_free_heap;
+constexpr uint32_t kPostMagic = 0x4D434C50u;   /* "MCLP" */
+
+/* The previous boot's footprint, copied out before this boot overwrites it. */
+bool     g_prev_valid = false;
+bool     g_prev_incomplete = false;
+uint8_t  g_prev_scenario = 0;
+uint8_t  g_prev_phase = 0;
+uint8_t  g_prev_run_state = 0;
+uint8_t  g_prev_ble_role = 0;
+uint32_t g_prev_uptime_ms = 0;
+uint32_t g_prev_free_heap = 0;
+int      g_reset_reason = 0;
+
 enum RunState : uint8_t {
     RUN_IDLE = 0,
     RUN_ARMED = 1,
@@ -483,8 +517,16 @@ struct RunCounters {
     uint32_t ble_frag_rejected;
     uint32_t scan_matches;      /* advertisements matching UUID *and* beacon */
     uint32_t scan_uuid_only;    /* right protocol, wrong transaction */
+    uint32_t scan_slices;       /* scan restarts; see ble_become_central */
+    /*
+     * EVERY advertisement handed to the callback, MCL or not. Without this a
+     * scan that survives proves nothing: a quiet room and a fixed leak look
+     * identical from the outside, and the retention path this firmware had to
+     * fix is driven by foreign advertisements, not by MCL ones.
+     */
+    uint32_t scan_seen;
 };
-RunCounters g_counters = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+RunCounters g_counters = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 /* ------------------------------------------------------------ Wi-Fi/HTTP */
 
@@ -625,17 +667,79 @@ bool emit_payload(const uint8_t *payload, size_t len) {
  * cadence; being late costs samples_unscanned, which is counted rather than
  * hidden.
  */
+/*
+ * THE CAPTURE LEVEL METER.
+ *
+ * heard=0 is not a diagnosis. A microphone that never delivers a sample, a
+ * transmitter pointed the other way, and a receiver configured for a band
+ * nobody is transmitting in all report exactly zero, and this project has
+ * already lost time to the third of those. Peak and mean amplitude separate
+ * them: near-silence means the input path is not delivering anything to
+ * disagree with, and a healthy level with no acquisition means the signal is
+ * arriving and the receiver is rejecting it.
+ *
+ * These are counters over the run, not a signal quality measure, and they are
+ * deliberately not called SNR. They say how loud the room was, nothing more.
+ */
+/* Where the loop's time actually goes, in milliseconds. */
+uint32_t g_read_ms_total = 0;
+uint32_t g_read_ms_max = 0;
+uint32_t g_poll_ms_total = 0;
+uint32_t g_poll_ms_max = 0;
+uint32_t g_poll_calls = 0;
+
+uint32_t g_cap_blocks = 0;
+uint32_t g_cap_samples = 0;
+uint16_t g_cap_peak = 0;
+uint64_t g_cap_abs_sum = 0;
+
+/* A completed run is a receipt, not a live room meter.  Idle nodes continue
+   sampling by design, so the four values exposed by /api/result are sealed at
+   scenario_end() instead of aliasing counters that keep moving afterward. */
+uint32_t g_run_cap_blocks = 0;
+uint32_t g_run_cap_samples = 0;
+uint16_t g_run_cap_peak = 0;
+uint32_t g_run_cap_mean = 0;
+
+void capture_level_reset() {
+    g_read_ms_total = 0;
+    g_read_ms_max = 0;
+    g_poll_ms_total = 0;
+    g_poll_ms_max = 0;
+    g_poll_calls = 0;
+    g_cap_blocks = 0;
+    g_cap_samples = 0;
+    g_cap_peak = 0;
+    g_cap_abs_sum = 0;
+}
+
 void capture_pump() {
     if (!g_microphone_ready || g_transmitting) { return; }
 
     /* A small stack block. The window is the arena; this is only the handoff. */
     static int16_t block[1024];
     const size_t want = sizeof(block);
+    const uint32_t read_started = millis();
     const int got = microphone.readBytes(reinterpret_cast<char *>(block),
                                          static_cast<int>(want));
+    const uint32_t read_ms = millis() - read_started;
+    g_read_ms_total += read_ms;
+    if (read_ms > g_read_ms_max) { g_read_ms_max = read_ms; }
     if (got <= 0) { return; }
-    (void)mcl_ap_listen_push(&g_listener, block,
-                             static_cast<size_t>(got) / sizeof(int16_t));
+    const size_t n = static_cast<size_t>(got) / sizeof(int16_t);
+
+    ++g_cap_blocks;
+    g_cap_samples += static_cast<uint32_t>(n);
+    for (size_t i = 0; i < n; ++i) {
+        /* -32768 has no positive counterpart in int16_t; widen before negating
+           or the absolute value of the loudest possible sample is negative. */
+        const int32_t v = block[i];
+        const uint32_t a = static_cast<uint32_t>((v < 0) ? -v : v);
+        if (a > g_cap_peak) { g_cap_peak = static_cast<uint16_t>(a); }
+        g_cap_abs_sum += a;
+    }
+
+    (void)mcl_ap_listen_push(&g_listener, block, n);
 }
 
 /* ============================================================ BLE
@@ -826,6 +930,7 @@ uint8_t  g_wanted_beacon[MCL_RENDEZVOUS_BEACON_SIZE] = {0};
 
 class NodeScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice device) override {
+        ++g_counters.scan_seen;
         if (g_scan_hit) { return; }
         const uint8_t *payload = device.getPayload();
         const size_t len = device.getPayloadLength();
@@ -871,12 +976,51 @@ bool ble_stack_up() {
     return true;
 }
 
+/*
+ * ORDERLY, AND THE ORDER IS THE WHOLE POINT.
+ *
+ * Tearing the stack down under a live connection panics this part. The
+ * post-mortem caught it: reset_reason 4 at 48 015 ms of a 45 000 ms run that
+ * began at 3 015 ms -- exactly scenario_end -- in phase ACTIVATE, every time
+ * the phone had connected as central. The panic takes the RAM log ring with
+ * it, so without the RTC copy the run simply looked like a board that came
+ * back idle.
+ *
+ * The central path always disconnected first. The peripheral path did not,
+ * because when this node is the offerer it never calls connect() and there was
+ * no obvious place to hang the hang-up. So both are handled here: stop
+ * advertising so nothing new arrives, drop whatever is connected, and let the
+ * host task run the disconnect to completion before the ground disappears.
+ */
 void ble_stack_down() {
     if (!g_ble_up) { return; }
+
+    if (g_ble_role == BLE_ROLE_PERIPHERAL) {
+        BLEDevice::stopAdvertising();
+    }
     if (g_client != nullptr && g_client->isConnected()) {
         g_client->disconnect();
         delay(100);
     }
+    if (g_server != nullptr && g_server->getConnectedCount() > 0u) {
+        g_server->disconnect(g_server->getConnId());
+    }
+    /*
+     * Wait for the disconnect rather than assuming a fixed delay is enough.
+     * The bound is short and the loop exits as soon as the peer is gone; the
+     * delay that used to be here was 100 ms and covered a client disconnect,
+     * not a server one.
+     */
+    for (int waited = 0; waited < 60; ++waited) {
+        const bool server_busy =
+            (g_server != nullptr && g_server->getConnectedCount() > 0u);
+        const bool client_busy =
+            (g_client != nullptr && g_client->isConnected());
+        if (!server_busy && !client_busy) { break; }
+        delay(25);
+    }
+    g_ble_connected = false;
+
     BLEDevice::deinit(true);
     g_ble_up = false;
     g_ble_connected = false;
@@ -910,7 +1054,10 @@ bool ble_become_peripheral(uint32_t own_token) {
 
     g_tx_char = service->createCharacteristic(MCL_TX_CHAR_UUID,
                                               BLECharacteristic::PROPERTY_NOTIFY);
-    g_tx_char->addDescriptor(new BLE2902());
+    /* ESP32 core 3.x uses NimBLE, which creates the 0x2902 client
+       configuration descriptor automatically for NOTIFY characteristics.
+       Manually allocating a second one is deprecated and can leave two CCCDs
+       describing one characteristic. */
     service->start();
 
     uint8_t beacon[MCL_RENDEZVOUS_BEACON_SIZE];
@@ -937,6 +1084,14 @@ bool ble_become_peripheral(uint32_t own_token) {
     return true;
 }
 
+/*
+ * How long one scan slice lasts. Long enough that a peer advertising at a
+ * typical 100 ms interval is seen many times over, short enough that the
+ * library's per-address retention (see ble_become_central) is emptied often.
+ */
+constexpr uint32_t kScanSliceSeconds = 20;
+uint32_t g_scan_slice_ms = 0;
+
 /* The acceptor. Scans for the token it heard, and connects to nothing else. */
 bool ble_become_central(uint32_t peer_token) {
     if (!ble_stack_up()) { return false; }
@@ -946,17 +1101,63 @@ bool ble_become_central(uint32_t peer_token) {
     g_scan_hit = false;
 
     BLEScan *scan = BLEDevice::getScan();
-    scan->setAdvertisedDeviceCallbacks(&g_scan_callbacks, true, true);
+    /*
+     * shouldParse=false, AND THE SCAN IS SLICED. Both are here because this
+     * board rebooted mid-run and the reason was not the obvious one.
+     *
+     * This core builds BLE on NimBLE, not Bluedroid, and the two halves of
+     * BLEScan.cpp behave differently. On the NimBLE path `wantDuplicates` is
+     * never read at all -- the flag is live only in the Bluedroid half -- so
+     * setting it is not a fix, it is a comment that compiles. What that path
+     * does instead is insert EVERY newly seen address into
+     * m_scanResults.m_vectorAdvertisedDevices unconditionally, and only drop
+     * it again when m_maxResults == 0. m_maxResults is initialised to 0xFF and
+     * this version exposes no setter, so retention is unbounded by default:
+     * one live allocation per distinct BLE address, in a room where phones
+     * rotate their resolvable private address every fifteen minutes. A BLE
+     * phase here runs with roughly 15 KB of heap in total. It does not take
+     * long.
+     *
+     * The library does expose the cure, in start(): with is_continue = false
+     * it calls clearResults() itself, under its own m_ignoreResults guard, so
+     * the map is emptied at a moment when the host task is not inserting into
+     * it. Calling clearResults() directly from this task while a scan is
+     * running would race the NimBLE host task on a std::map instead. So the
+     * scan runs in bounded slices and ble_scan_pump() starts the next one.
+     *
+     * shouldParse=false then skips parseAdvertisement, whose String and vector
+     * allocations are the bulk of the per-advertisement churn. The callback
+     * reads getPayload()/getPayloadLength(), which setPayload() fills in on
+     * the unparsed path, plus the address and address type, which are set
+     * explicitly either way. Nothing here needs a parsed view.
+     */
+    scan->setAdvertisedDeviceCallbacks(&g_scan_callbacks, false, false);
     /* Passive: everything needed is in the advertisement itself, and a scan
        request would put this machine on the air for no information. */
     scan->setActiveScan(false);
     scan->setInterval(100);
     scan->setWindow(80);
-    scan->start(0, nullptr, false);   /* continuous, non-blocking */
+    scan->start(kScanSliceSeconds, nullptr, false);   /* one slice */
+    g_scan_slice_ms = millis();
 
     g_ble_role = BLE_ROLE_CENTRAL;
     log_line("BLE scanning for token=%08lX", static_cast<unsigned long>(peer_token));
     return true;
+}
+
+/*
+ * Start the next scan slice once the previous one has expired. Called from
+ * every path that waits on the scanner; doing it here rather than in the
+ * callback keeps the restart on the application task, where the library's
+ * clearResults() is safe.
+ */
+void ble_scan_pump() {
+    if (g_ble_role != BLE_ROLE_CENTRAL || g_ble_connected || !g_ble_up) { return; }
+    BLEScan *scan = BLEDevice::getScan();
+    if (scan->isScanning()) { return; }
+    scan->start(kScanSliceSeconds, nullptr, false);
+    g_scan_slice_ms = millis();
+    ++g_counters.scan_slices;
 }
 
 bool ble_connect_to_hit() {
@@ -1242,6 +1443,8 @@ void machine_pump() {
         g_ble_frame_ready = false;
     }
 
+    ble_scan_pump();
+
     /* The scanner found the transaction it was told to look for. */
     if (g_scan_hit && g_ble_role == BLE_ROLE_CENTRAL && !g_ble_connected) {
         g_scan_hit = false;
@@ -1317,12 +1520,69 @@ void machine_pump() {
  * run while somebody else is measured, and it is the one that establishes the
  * room's own noise before anything is concluded from a failure.
  */
+/*
+ * How much new audio to gather before searching it. See the note on
+ * listen_should_poll: this is the length of the contiguous stretch the
+ * receiver gets, and it must stay below the window capacity or the beginning
+ * of the stretch is overwritten before it is searched.
+ */
+/*
+ * 40 000 samples, and the ceiling is NOT the window capacity.
+ *
+ * A frame must fall entirely inside one contiguous stretch to be recovered,
+ * so a longer batch sounds strictly better: at 300 baud and 160 samples a
+ * symbol, a 10-byte PRESENCE spans about 25 000 samples with its preamble and
+ * a 17-byte TRANSPORT_OFFER about 33 900, and a bigger batch leaves a large
+ * object more room to start in.
+ *
+ * That reasoning was tried at 46 000, against a 47 360 window, and MEASURED
+ * WORSE: recoveries fell from 4 to 0, captured audio more than halved, and
+ * 24 960 samples were discarded unsearched. The window has to hold the batch
+ * AND keep the scan position inside itself. Push a batch that nearly fills the
+ * window and the oldest audio -- which is where the scan position still is --
+ * is evicted before the search reaches it, so poll returns QUIET and the whole
+ * batch is thrown away unexamined.
+ *
+ * So the batch is bounded by the window minus the room the scan position needs
+ * behind it, not by the window. 40 000 leaves 7 360 samples of that room and
+ * recovers frames; it is kept because it was measured, not because it is a
+ * round number.
+ */
+constexpr size_t kPollBatchSamples = 40000;   /* 0.83 s, window holds 47360 */
+uint64_t g_last_poll_pushed = 0;
+
+/*
+ * True when enough new audio has arrived to be worth a search.
+ *
+ * A poll costs about 380 ms here and a read costs 21 ms, so polling after
+ * every read means the microphone is unread 95% of the time and the audio
+ * that does arrive is shredded into fragments far shorter than a frame.
+ * Waiting fills the window with one continuous stretch instead.
+ *
+ * `pending` is the exception: the listener has already acquired a preamble and
+ * is waiting for the body of that frame to arrive. That poll is pinned to a
+ * single start position and does no correlation sweep at all, so it is cheap
+ * and must not be delayed -- delaying it is how an acquired frame times out.
+ */
+bool listen_should_poll() {
+    if (g_listener.pending != 0u) { return true; }
+    return (g_listener.total_pushed - g_last_poll_pushed) >= kPollBatchSamples;
+}
+
 void scenario_listen_tick() {
     mcl_ap_listen_event_t event;
     uint8_t payload[kMaxBootstrapPayload];
 
+    if (!listen_should_poll()) { return; }
+    g_last_poll_pushed = g_listener.total_pushed;
+
+    const uint32_t poll_started = millis();
     const mcl_ap_listen_result_t r =
         mcl_ap_listen_poll(&g_listener, scratch_ptr(), payload, sizeof(payload), &event);
+    const uint32_t poll_ms = millis() - poll_started;
+    ++g_poll_calls;
+    g_poll_ms_total += poll_ms;
+    if (poll_ms > g_poll_ms_max) { g_poll_ms_max = poll_ms; }
 
     switch (r) {
         case MCL_AP_LISTEN_CONTACT: {
@@ -1512,13 +1772,16 @@ void scenario_ble_diagnostic_tick(bool advertise) {
         g_ble_frame_ready = false;
     }
 
+    ble_scan_pump();
+
     if (g_scan_hit && !advertise) {
         g_scan_hit = false;
         log_line("scan matched UUID and beacon, adv_len=%u",
                  static_cast<unsigned>(g_scan_raw_len));
         /* Keep scanning: a second sighting is a fact worth counting, and
-           stopping here would report one advertisement as a whole run. */
-        BLEDevice::getScan()->start(0, nullptr, true);
+           stopping here would report one advertisement as a whole run. The
+           slice pump re-arms it; restarting with is_continue = true here is
+           what made this scenario reboot the board. */
     }
 }
 
@@ -1620,7 +1883,18 @@ void handle_status() {
     j += "\"arena_bytes\":" + String(static_cast<unsigned>(kArenaBytes)) + ",";
     j += "\"window_samples\":" + String(static_cast<unsigned>(kListenSamples)) + ",";
     j += "\"log_held\":" + String(static_cast<unsigned>(g_log_count)) + ",";
-    j += "\"log_dropped\":" + String(g_log_dropped);
+    j += "\"log_dropped\":" + String(g_log_dropped) + ",";
+    j += "\"reset_reason\":" + String(g_reset_reason) + ",";
+    j += "\"previous\":{";
+    j += "\"known\":" + String(g_prev_valid ? "true" : "false") + ",";
+    j += "\"incomplete\":" + String(g_prev_incomplete ? "true" : "false") + ",";
+    j += "\"scenario\":" + String(static_cast<unsigned>(g_prev_scenario)) + ",";
+    j += "\"phase\":\"" + String(phase_name(g_prev_phase)) + "\",";
+    j += "\"run_state\":\"" + String(run_state_name(g_prev_run_state)) + "\",";
+    j += "\"ble_role\":\"" + String(ble_role_name(g_prev_ble_role)) + "\",";
+    j += "\"uptime_ms\":" + String(g_prev_uptime_ms) + ",";
+    j += "\"free_heap\":" + String(g_prev_free_heap);
+    j += "}";
     j += "}";
     send_json(200, j);
 }
@@ -1698,6 +1972,13 @@ void arm_and_restart() {
                   "armed configuration does not fit in RTC memory");
     memcpy(g_armed_blob, &g_config, sizeof(g_config));
     g_armed_magic = kArmedMagic;
+    /*
+     * This restart is intended, so it must not be reported as a crash. The
+     * post-mortem is invalidated here and nowhere else: every other path to
+     * esp_restart() is one this node did not choose, and those are exactly
+     * the ones worth seeing.
+     */
+    g_post_magic = 0u;
     log_line("armed scenario=%u, restarting into the run",
              static_cast<unsigned>(g_config.scenario));
     Serial.flush();
@@ -1725,6 +2006,14 @@ void handle_stop() {
 }
 
 void handle_result() {
+    const bool live = (g_run_state == RUN_RUNNING || g_run_state == RUN_ARMED);
+    const uint32_t cap_blocks = live ? g_cap_blocks : g_run_cap_blocks;
+    const uint32_t cap_samples = live ? g_cap_samples : g_run_cap_samples;
+    const uint16_t cap_peak = live ? g_cap_peak : g_run_cap_peak;
+    const uint32_t cap_mean = live
+        ? (g_cap_samples
+           ? static_cast<uint32_t>(g_cap_abs_sum / g_cap_samples) : 0u)
+        : g_run_cap_mean;
     String j = "{";
     j += "\"run_state\":\"" + String(run_state_name(g_run_state)) + "\",";
     j += "\"phase\":\"" + String(phase_name(g_phase)) + "\",";
@@ -1748,7 +2037,13 @@ void handle_result() {
     j += "\"ble_frames_rx\":" + String(g_counters.ble_frames_rx) + ",";
     j += "\"ble_frag_rejected\":" + String(g_counters.ble_frag_rejected) + ",";
     j += "\"scan_matches\":" + String(g_counters.scan_matches) + ",";
-    j += "\"scan_uuid_only\":" + String(g_counters.scan_uuid_only);
+    j += "\"scan_uuid_only\":" + String(g_counters.scan_uuid_only) + ",";
+    j += "\"cap_blocks\":" + String(cap_blocks) + ",";
+    j += "\"cap_samples\":" + String(cap_samples) + ",";
+    j += "\"cap_peak\":" + String(cap_peak) + ",";
+    j += "\"cap_mean\":" + String(cap_mean) + ",";
+    j += "\"scan_slices\":" + String(g_counters.scan_slices) + ",";
+    j += "\"scan_seen\":" + String(g_counters.scan_seen);
     j += "},";
     j += "\"values\":[";
     for (size_t i = 0; i < g_tagged_count; ++i) {
@@ -1844,6 +2139,12 @@ void scenario_start() {
     tag_value("own_source_ref", g_source_ref, PROV_LOCAL);
 
     listener_reset();
+    capture_level_reset();
+    g_run_cap_blocks = 0;
+    g_run_cap_samples = 0;
+    g_run_cap_peak = 0;
+    g_run_cap_mean = 0;
+    g_last_poll_pushed = 0;
     schedule_next_announce();
 
     g_diag_started = false;
@@ -1888,12 +2189,60 @@ void scenario_end(uint8_t final_state, const char *why) {
     }
     g_counters.samples_unscanned =
         static_cast<uint32_t>(g_listener.samples_unscanned);
+    g_run_cap_blocks = g_cap_blocks;
+    g_run_cap_samples = g_cap_samples;
+    g_run_cap_peak = g_cap_peak;
+    g_run_cap_mean = g_cap_samples
+        ? static_cast<uint32_t>(g_cap_abs_sum / g_cap_samples) : 0u;
+    /*
+     * THE RUN PRINTS ITS OWN RESULT, ACROSS THREE LINES.
+     *
+     * Reading it back over a second serial connection is not reliable here:
+     * opening the port asserts DTR, which on this part's USB-serial-JTAG
+     * resets the board, and a reset destroys the counters that were the point
+     * of the run. So everything that decides whether a run counts goes out on
+     * the wire while the run is still the thing that is running.
+     *
+     * Three lines rather than one because kLogTextMax is 88 bytes and the ring
+     * is 128 entries deep. Widening it to fit one long line would add about
+     * 9 KB of static DRAM, and a BLE phase on this board has roughly 15 KB of
+     * heap in total -- the log would be bought with the radio.
+     */
     log_line("run end state=%s heard=%lu recovered=%lu emitted=%lu unscanned=%lu",
              run_state_name(final_state),
              static_cast<unsigned long>(g_counters.frames_heard),
              static_cast<unsigned long>(g_counters.frames_recovered),
              static_cast<unsigned long>(g_counters.frames_emitted),
              static_cast<unsigned long>(g_counters.samples_unscanned));
+    log_line("run end cap_blocks=%lu cap_samples=%lu peak=%lu mean=%lu",
+             static_cast<unsigned long>(g_cap_blocks),
+             static_cast<unsigned long>(g_cap_samples),
+             static_cast<unsigned long>(g_cap_peak),
+             static_cast<unsigned long>(g_cap_samples ?
+                 (g_cap_abs_sum / g_cap_samples) : 0u));
+    log_line("run end pushed=%lu searched=%lu unscanned=%lu ref_len=%lu",
+             static_cast<unsigned long>(g_listener.total_pushed),
+             static_cast<unsigned long>(g_listener.samples_searched),
+             static_cast<unsigned long>(g_listener.samples_unscanned),
+             static_cast<unsigned long>(g_listener.ref_len));
+    log_line("run end read_ms=%lu/%lu poll_ms=%lu/%lu polls=%lu",
+             static_cast<unsigned long>(g_read_ms_total),
+             static_cast<unsigned long>(g_read_ms_max),
+             static_cast<unsigned long>(g_poll_ms_total),
+             static_cast<unsigned long>(g_poll_ms_max),
+             static_cast<unsigned long>(g_poll_calls));
+    log_line("run end objects=%lu ble_tx=%lu ble_rx=%lu ble_frag_rej=%lu",
+             static_cast<unsigned long>(g_counters.objects_decoded),
+             static_cast<unsigned long>(g_counters.ble_frames_tx),
+             static_cast<unsigned long>(g_counters.ble_frames_rx),
+             static_cast<unsigned long>(g_counters.ble_frag_rejected));
+    log_line("run end scan_seen=%lu match=%lu uuid=%lu slices=%lu heap=%lu/%lu",
+             static_cast<unsigned long>(g_counters.scan_seen),
+             static_cast<unsigned long>(g_counters.scan_matches),
+             static_cast<unsigned long>(g_counters.scan_uuid_only),
+             static_cast<unsigned long>(g_counters.scan_slices),
+             static_cast<unsigned long>(ESP.getFreeHeap()),
+             static_cast<unsigned long>(ESP.getMaxAllocHeap()));
 
     if (g_ble_up) {
         set_phase(PHASE_TEARDOWN);
@@ -2162,6 +2511,27 @@ void setup() {
      * restarting into the thing that crashed it.
      */
     bool armed_on_boot = false;
+    /*
+     * Read the previous boot's footprint before this boot overwrites it.
+     * "Incomplete" is the honest word: RUN_RUNNING or RUN_ARMED at the moment
+     * the lights went out means the run did not reach an ending, whatever the
+     * reason code says. A brownout, a panic and a watchdog are all the same
+     * fact to the evidence -- the run did not finish, so it does not count.
+     */
+    g_reset_reason = static_cast<int>(esp_reset_reason());
+    if (g_post_magic == kPostMagic) {
+        g_prev_valid      = true;
+        g_prev_scenario   = g_post_scenario;
+        g_prev_phase      = g_post_phase;
+        g_prev_run_state  = g_post_run_state;
+        g_prev_ble_role   = g_post_ble_role;
+        g_prev_uptime_ms  = g_post_uptime_ms;
+        g_prev_free_heap  = g_post_free_heap;
+        g_prev_incomplete = (g_prev_run_state == RUN_RUNNING ||
+                             g_prev_run_state == RUN_ARMED);
+    }
+    g_post_magic = 0u;
+
     if (g_armed_magic == kArmedMagic) {
         g_armed_magic = 0u;
         memcpy(&g_config, g_armed_blob, sizeof(g_config));
@@ -2198,7 +2568,23 @@ void setup() {
     }
 }
 
+/*
+ * Mirror the live footprint into RTC memory. Called every loop: these are six
+ * word writes to memory that is already mapped, and the alternative -- update
+ * it only at phase changes -- loses precisely the run that dies mid-phase.
+ */
+void post_mortem_mark() {
+    g_post_magic     = kPostMagic;
+    g_post_scenario  = g_config.scenario;
+    g_post_phase     = g_phase;
+    g_post_run_state = g_run_state;
+    g_post_ble_role  = g_ble_role;
+    g_post_uptime_ms = millis();
+    g_post_free_heap = static_cast<uint32_t>(ESP.getFreeHeap());
+}
+
 void loop() {
+    post_mortem_mark();
     serial_pump();
     if (g_wifi_up) { g_http.handleClient(); }
 

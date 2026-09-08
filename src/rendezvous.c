@@ -1118,6 +1118,16 @@ static void stage_admitting(mcl_rdv_t *rdv, uint32_t now)
 static void stage_validating(mcl_rdv_t *rdv, uint32_t now)
 {
     if (!rdv->is_controller) {
+        /*
+         * The acceptor has sent PATH_RESPONSE and is waiting for COMMIT.  The
+         * controller's retries are bounded, so this wait must be bounded too:
+         * if the candidate path disappears after the response, retaining the
+         * peer, session and migration forever makes every later solicitation
+         * look unrelated while this coordinator can no longer answer it.
+         */
+        if (elapsed(now, rdv->deadline_ms)) {
+            abandon_epoch(rdv, now);
+        }
         return;
     }
     retransmit(rdv, now, MCL_HANDOFF_OP_PATH_CHALLENGE, rdv->challenge,
@@ -1378,6 +1388,12 @@ mcl_rdv_status_t mcl_rdv_admit(mcl_rdv_t *rdv)
         (void)send_control(rdv, MCL_HANDOFF_OP_PATH_RESPONSE,
                            rdv->pending_challenge);
     }
+    /* Allow the controller its complete COMMIT retransmission schedule, then
+       abandon rather than retaining a half-contact forever. */
+    rdv->deadline_ms = now_of(rdv)
+                       + (MCL_RDV_MAX_HANDOFF_RETRIES + 1u)
+                         * or_default(rdv->config.response_timeout_ms,
+                                      DEFAULT_RESPONSE_TIMEOUT_MS);
     return MCL_RDV_OK;
 }
 

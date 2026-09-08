@@ -307,17 +307,29 @@ static mcl_machine_status_t open_candidate(mcl_machine_t *machine,
                                            const mcl_rdv_event_t *ev)
 {
     mcl_machine_candidate_t answer;
+    uint32_t local_token;
+
+    /* TRANSPORT_OFFER carries the offerer's endpoint token and ACCEPT carries
+       no reciprocal token.  Therefore an acceptor must never be handed a
+       local token left over from a transaction in which it was the offerer. */
+    local_token = (ev->peer_endpoint_token == 0u)
+                ? machine->local_endpoint_token : 0u;
 
     answer = machine->platform.candidate_open(machine->platform.user,
                                               ev->transport_id,
                                               ev->profile_id,
                                               ev->peer_endpoint_token,
-                                              machine->local_endpoint_token);
+                                              local_token);
     switch (answer) {
     case MCL_MACHINE_CANDIDATE_READY:
         machine->candidate_open_transport = ev->transport_id;
         machine->awaiting_candidate = 0u;
         if (mcl_rdv_candidate_ready(&machine->rdv) != MCL_RDV_OK) {
+            if (machine->platform.candidate_close != NULL) {
+                machine->platform.candidate_close(machine->platform.user,
+                                                  ev->transport_id);
+            }
+            machine->candidate_open_transport = 0u;
             return MCL_MACHINE_ERR_STATE;
         }
         return MCL_MACHINE_OK;
@@ -337,6 +349,7 @@ mcl_machine_status_t mcl_machine_poll(mcl_machine_t *machine,
 {
     mcl_rdv_event_t ev;
     mcl_rdv_status_t rc;
+    mcl_rdv_state_t state;
 
     if (machine == NULL || out == NULL) {
         return MCL_MACHINE_ERR_NULL;
@@ -345,18 +358,38 @@ mcl_machine_status_t mcl_machine_poll(mcl_machine_t *machine,
         return MCL_MACHINE_ERR_STATE;
     }
 
-    if (machine->has_pending != 0u) {
-        *out = machine->pending;
-        machine->has_pending = 0u;
-        return MCL_MACHINE_OK;
-    }
-
     memset(&ev, 0, sizeof(ev));
     rc = mcl_rdv_poll(&machine->rdv, &ev);
     if (rc != MCL_RDV_OK && rc != MCL_RDV_TX_UNCERTAIN) {
         emit(out, MCL_MACHINE_EVENT_ERROR, NULL);
         out->status = MCL_MACHINE_ERR_STATE;
         return MCL_MACHINE_OK;
+    }
+
+    /*
+     * Some pre-contact failures correctly return the coordinator to
+     * ANNOUNCING without inventing CONTACT_LOST: no contact existed yet.  The
+     * platform resource is still real, though, and the facade owns the open,
+     * so close it whenever the coordinator leaves every candidate/contact
+     * state.  CONTACT_LOST below sees the zero and cannot close it twice.
+     */
+    state = mcl_rdv_state(&machine->rdv);
+    if (machine->candidate_open_transport != 0u &&
+        (state == MCL_RDV_STATE_IDLE ||
+         state == MCL_RDV_STATE_ANNOUNCING ||
+         state == MCL_RDV_STATE_HEARD ||
+         state == MCL_RDV_STATE_OFFERING ||
+         state == MCL_RDV_STATE_EXHAUSTED ||
+         state == MCL_RDV_STATE_CLOSED ||
+         state == MCL_RDV_STATE_ACCEPTING ||
+         state == MCL_RDV_STATE_SOLICITING)) {
+        if (machine->platform.candidate_close != NULL) {
+            machine->platform.candidate_close(machine->platform.user,
+                                              machine->candidate_open_transport);
+        }
+        machine->candidate_open_transport = 0u;
+        machine->awaiting_candidate = 0u;
+        machine->local_endpoint_token = 0u;
     }
 
     switch (ev.kind) {
@@ -410,6 +443,8 @@ mcl_machine_status_t mcl_machine_poll(mcl_machine_t *machine,
                                               machine->candidate_open_transport);
             machine->candidate_open_transport = 0u;
         }
+        machine->awaiting_candidate = 0u;
+        machine->local_endpoint_token = 0u;
         emit(out, MCL_MACHINE_EVENT_CONTACT_LOST, &ev);
         return MCL_MACHINE_OK;
 
@@ -466,6 +501,12 @@ mcl_machine_status_t mcl_machine_candidate_ready(mcl_machine_t *machine)
     }
     machine->awaiting_candidate = 0u;
     if (mcl_rdv_candidate_ready(&machine->rdv) != MCL_RDV_OK) {
+        if (machine->platform.candidate_close != NULL &&
+            machine->candidate_open_transport != 0u) {
+            machine->platform.candidate_close(machine->platform.user,
+                                              machine->candidate_open_transport);
+        }
+        machine->candidate_open_transport = 0u;
         return MCL_MACHINE_ERR_STATE;
     }
     return MCL_MACHINE_OK;

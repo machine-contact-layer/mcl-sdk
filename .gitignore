@@ -10,6 +10,13 @@ hardware/dfr1154-autonomous-node/build/
 hardware/dfr1154-autonomous-node/build-manifest.txt
 hardware/dfr1154-autonomous-node/spike-ble-memory/build-manifest.txt
 
+# The Android bench builds the same way: build-apk.ps1 stages the canonical
+# sources, hashes them into build-manifest.txt with absolute local paths, and
+# writes the APK under build/. Neither is a source of record; the APK SHA-256
+# goes in the evidence that cites it.
+hardware/android-bench/build/
+hardware/android-bench/build-manifest.txt
+
 # .NET build output for the host harness
 tools/dual-transport-peer/bin/
 tools/dual-transport-peer/obj/

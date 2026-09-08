@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    MCL Android bench. LAB INSTRUMENT.
+
+    The permission list is the honest description of what this app does: it
+    listens on the microphone, and it advertises, scans and connects over BLE.
+    Nothing else is requested, and there is no network permission at all:
+    control arrives as a broadcast over adb and results go to logcat, so the
+    app has no reason to open a socket.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="org.mcl.bench">
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- BLE, Android 12 and later.
+
+         neverForLocation IS claimed, and it has to be. It is true of this
+         scanner: it matches on an advertisement's contents and derives nothing
+         about where anything is. An earlier version left it off, reasoning
+         that the flag was a declaration and a lab tool could simply request
+         the plain permission. That is wrong in a way the platform does not
+         report. Without the flag, BLUETOOTH_SCAN is treated as location-
+         deriving and results are withheld unless ACCESS_FINE_LOCATION is also
+         held. That permission is capped at API 30 below, so on Android 14 the
+         scan callback is simply never invoked. No error, no denial:
+         the board advertised for fifty seconds and the phone reported nothing
+         at all, which is indistinguishable from a peer that is not there. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+                     android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Older releases gate BLE scanning behind location. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+                     android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH"
+                     android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+                     android:maxSdkVersion="30" />
+
+    <uses-feature android:name="android.hardware.bluetooth_le"
+                  android:required="true" />
+    <uses-feature android:name="android.hardware.microphone"
+                  android:required="true" />
+
+    <application android:label="MCL bench"
+                 android:debuggable="true"
+                 android:allowBackup="false"
+                 android:supportsRtl="false">
+
+        <activity android:name="org.mcl.bench.BenchActivity"
+                  android:exported="true"
+                  android:screenOrientation="portrait"
+                  android:label="MCL bench">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

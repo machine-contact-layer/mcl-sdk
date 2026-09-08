@@ -68,13 +68,7 @@ typedef enum {
     MCL_MACHINE_OK = 0,
     MCL_MACHINE_ERR_NULL = 1,
     MCL_MACHINE_ERR_CONFIG = 2,
-    MCL_MACHINE_ERR_STATE = 3,
-    /*
-     * The bytes may or may not have left. Distinct from a refusal for the same
-     * reason `mcl_sdk_tx_fn` distinguishes them: a caller that treats "I cannot
-     * tell" as "it failed" will retransmit a COMMIT that already arrived.
-     */
-    MCL_MACHINE_TX_UNCERTAIN = 4
+    MCL_MACHINE_ERR_STATE = 3
 } mcl_machine_status_t;
 
 /* ------------------------------------------------------------------ events */
@@ -306,8 +300,6 @@ typedef struct {
     uint8_t started;
     uint8_t candidate_open_transport;
     uint8_t awaiting_candidate;
-    mcl_machine_event_t pending;
-    uint8_t has_pending;
 } mcl_machine_t;
 
 /*
