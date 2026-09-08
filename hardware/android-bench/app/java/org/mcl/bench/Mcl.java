@@ -21,6 +21,28 @@ public final class Mcl {
     /** Majors and sizes, for the run record. */
     public static native String version();
 
+    /* Product-facing machine facade. Java owns Android audio/BLE/IP; native
+       MCL owns every protocol state transition and queued transmission. */
+    public interface MachinePlatform {
+        /** 0 sent, negative definitely refused, positive certainty unknown. */
+        int transmit(int transportId, byte[] bytes);
+    }
+    public static native long machineCreate(int sourceRef, int role,
+                                            MachinePlatform platform);
+    public static native void machineDestroy(long handle);
+    public static native int machineStart(long handle);
+    /** eventInfo: {kind, transport, profile, peerRef, sessionRef, status}. */
+    public static native int machinePoll(long handle, int[] eventInfo);
+    public static native int machineReceive(long handle, int transportId,
+                                            byte[] bytes, int size);
+    /** info: {transport, profile, peerToken, localToken, close}. */
+    public static native int machineTakeCandidateRequest(long handle, int[] info);
+    public static native void machineSetMediumState(long handle, boolean busy,
+                                                    boolean selfTransmitting);
+    public static native int machineCandidateReady(long handle);
+    public static native int machineCandidateRefused(long handle);
+    public static native int machinePolicy(long handle, boolean admit);
+
     /**
      * Modulate one payload into {@code out}. Returns the sample count, or a
      * negative modem status. Band arguments of 0 mean the modem default.

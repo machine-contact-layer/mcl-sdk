@@ -16,7 +16,7 @@
       .\bench.ps1 -Tail 40
 #>
 param(
-    [string]$Adb = 'C:\Users\marsm\rdb\adb.exe',
+    [string]$Adb = '',
     [string]$Package = 'org.mcl.bench',
     [string]$Command = '',
     [string]$Then = '',
@@ -27,6 +27,34 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# WHERE adb COMES FROM, AND WHY IT IS NOT A PATH IN THIS FILE
+#
+# A tracked script naming a path under someone's home directory is
+# configuration an adopter cannot discover. So adb is resolved, in order:
+# -Adb if given, then MCL_ADB, then ANDROID_SDK_ROOT/ANDROID_HOME's
+# platform-tools, then whatever is on PATH. Failing to find it is an error
+# that says how to fix it, not a silent fallback to a path that exists on one
+# machine.
+function Resolve-Adb([string]$explicit) {
+    if ($explicit) {
+        if (Test-Path -LiteralPath $explicit) { return $explicit }
+        throw "adb not found at -Adb '$explicit'"
+    }
+    if ($env:MCL_ADB -and (Test-Path -LiteralPath $env:MCL_ADB)) { return $env:MCL_ADB }
+    foreach ($root in @($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME)) {
+        if ($root) {
+            $p = Join-Path $root 'platform-tools\adb.exe'
+            if (Test-Path -LiteralPath $p) { return $p }
+        }
+    }
+    $cmd = Get-Command adb -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    throw ("adb not found. Pass -Adb <path>, or set MCL_ADB, or put adb on PATH, " +
+           "or set ANDROID_SDK_ROOT.")
+}
+$Adb = Resolve-Adb $Adb
+
 
 function Send-Bench([string]$text) {
     if ([string]::IsNullOrWhiteSpace($text)) { return }

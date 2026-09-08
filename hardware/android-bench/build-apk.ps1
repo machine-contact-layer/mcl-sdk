@@ -27,8 +27,9 @@
 param(
     # These default to the toolchains already present on this machine. Point
     # them anywhere else and the build is unchanged.
-    [string]$JdkHome = 'C:\Users\marsm\Downloads\prahari-c2\.tools\jdk-21\jdk-21.0.11+10',
-    [string]$SdkRoot = 'C:\Users\marsm\Downloads\OPEN-POCKET\.tools\android-sdk',
+    # Resolved from the environment when not given; see Resolve-Tool below.
+    [string]$JdkHome = '',
+    [string]$SdkRoot = '',
     # BUILD-TOOLS 35, NOT 34, AND THE REASON IS A CRASH RATHER THAN TASTE.
     # 34.0.0 ships R8 8.2.2-dev, whose dexer dies on this app's anonymous
     # BroadcastReceiver with "Cannot invoke String.length() because
@@ -45,6 +46,31 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# WHERE THE JDK AND THE SDK COME FROM
+#
+# Not from a path written into this file: the publication gate treats a tracked
+# script naming someone's home directory as a fatal finding, because it is
+# configuration an adopter cannot discover. Both are resolved from the
+# environment variables the Android tooling already defines, and a missing one
+# is an error that says how to supply it.
+function Resolve-Root([string]$explicit, [string[]]$envNames, [string]$what, [string]$hint) {
+    if ($explicit) {
+        if (Test-Path -LiteralPath $explicit) { return $explicit }
+        throw "$what not found at '$explicit'"
+    }
+    foreach ($n in $envNames) {
+        $v = [Environment]::GetEnvironmentVariable($n)
+        if ($v -and (Test-Path -LiteralPath $v)) { return $v }
+    }
+    throw "$what not found. $hint"
+}
+
+$JdkHome = Resolve-Root $JdkHome @('MCL_JDK_HOME', 'JAVA_HOME') 'JDK' `
+    'Pass -JdkHome <path>, or set JAVA_HOME or MCL_JDK_HOME.'
+$SdkRoot = Resolve-Root $SdkRoot @('MCL_ANDROID_SDK', 'ANDROID_SDK_ROOT', 'ANDROID_HOME') 'Android SDK' `
+    'Pass -SdkRoot <path>, or set ANDROID_SDK_ROOT or MCL_ANDROID_SDK.'
+
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # NOTE: not $sdkRoot. PowerShell variable names are case-insensitive,

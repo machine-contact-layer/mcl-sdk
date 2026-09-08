@@ -8,6 +8,14 @@ it.
 **Not a product, not an SDK sample, and not a conformance implementation.**
 Nothing here is cited as evidence on its own; it is one end of a rig.
 
+The bench now also contains a reference Android adapter for the public
+`mcl_machine_t` facade. `MachineAdapter.java` supplies Android audio, BLE,
+10-ms servicing, candidate activation, and explicit policy input; the native C
+facade retains all protocol state. Start it through the existing adb control
+plane with `machine start initiator` or `machine start responder`, then answer
+`POLICY_REQUIRED` with `machine admit` or `machine refuse`. This code is a
+reference port, while the Activity and adb interface remain laboratory UI.
+
 ## What it is made of, and what it is not made of
 
 The MCL side is the **canonical C**, compiled for the phone through the NDK and
@@ -46,8 +54,23 @@ runs the three AP-BOOTSTRAP-1 object sizes and reports them separately.
 
 No Gradle, and nothing is downloaded. `build-apk.ps1` drives `javac`, `jar`,
 `d8`, `aapt2`, `zipalign` and `apksigner` directly against an SDK and NDK
-already on the machine, and the paths are parameters. Two things that are not
-obvious and cost time to find:
+already on the machine.
+
+**Where the tools come from.** No path in these scripts points into anyone's
+home directory — a tracked script naming one is configuration an adopter cannot
+discover, and the publication gate fails the release for it. Each is resolved
+from the environment, and a missing one is an error that says how to supply it:
+
+| tool | `-Parameter` | then | then |
+|---|---|---|---|
+| JDK | `-JdkHome` | `MCL_JDK_HOME` | `JAVA_HOME` |
+| Android SDK | `-SdkRoot` | `MCL_ANDROID_SDK` | `ANDROID_SDK_ROOT`, `ANDROID_HOME` |
+| adb | `-Adb` | `MCL_ADB` | the SDK's `platform-tools`, then `PATH` |
+
+So the usual setup is to export `JAVA_HOME` and `ANDROID_SDK_ROOT` once and run
+the scripts with no arguments.
+
+Two things that are not obvious and cost time to find:
 
 - **build-tools 35, not 34.** 34.0.0 ships an R8 whose dexer dies on this app's
   anonymous `BroadcastReceiver` with an internal null-pointer error. 35.0.0

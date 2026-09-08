@@ -19,6 +19,8 @@ import android.widget.TextView;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The MCL Android bench.
@@ -57,6 +59,7 @@ public final class BenchActivity extends Activity {
 
     private AudioBench audio;
     private BleBench ble;
+    private MachineAdapter machine;
 
     private int bandLow;
     private int bandHigh;
@@ -137,15 +140,35 @@ public final class BenchActivity extends Activity {
         log("native: " + Mcl.version());
         log("source_ref=" + String.format("%08X", sourceRef) + " provenance=LOCAL");
         log("commands: adb shell am broadcast -a " + ACTION_CMD + " --es cmd \"...\"");
-        log("  emit <PRESENCE|PRESENCE_BALANCED|OFFER|ACCEPT> [gain_pct]");
+        log("  emit <PRESENCE|OFFER|ACCEPT> [gain_pct]");
         log("  ladder <lo> <hi> [reps]");
         log("  band <lo> <hi>    listen <ms>    stop");
         log("  ble on|off    adv <tokenhex>    scan <tokenhex>    blesend <hex>");
+        log("  machine start <initiator|responder> | admit | refuse | stop");
     }
 
     @Override
     protected void onDestroy() {
         unregisterReceiver(commands);
+        if (machine != null) {
+            final MachineAdapter closing = machine;
+            machine = null;
+            final CountDownLatch closed = new CountDownLatch(1);
+            work.post(() -> {
+                try {
+                    closing.close();
+                } finally {
+                    closed.countDown();
+                }
+            });
+            try {
+                if (!closed.await(3000L, TimeUnit.MILLISECONDS)) {
+                    log("MACHINE shutdown timed out");
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
         stopListening();
         if (ble != null) {
             ble.stop();
@@ -229,6 +252,9 @@ public final class BenchActivity extends Activity {
                         + " linked=" + ble.isLinked()
                         + " last_raw=" + ble.lastRawRecord());
                     break;
+                case "machine":
+                    machineCommand(parts);
+                    break;
                 default:
                     log("unknown command");
                     break;
@@ -236,6 +262,68 @@ public final class BenchActivity extends Activity {
         } catch (RuntimeException bad) {
             log("command refused: " + bad);
         }
+    }
+
+    private void machineCommand(String[] parts) {
+        if (parts.length < 2) {
+            throw new IllegalArgumentException("machine action required");
+        }
+        switch (parts[1].toLowerCase()) {
+            case "start":
+                if (parts.length < 3) {
+                    throw new IllegalArgumentException("machine role required");
+                }
+                if (machine != null) {
+                    throw new IllegalStateException("machine already running");
+                }
+                stopListening();
+                final int role;
+                if ("initiator".equalsIgnoreCase(parts[2])) {
+                    role = 0;
+                } else if ("responder".equalsIgnoreCase(parts[2])) {
+                    role = 1;
+                } else {
+                    throw new IllegalArgumentException("role must be initiator or responder");
+                }
+                machine = new MachineAdapter(work, audio, ble, this::log,
+                        sourceRef, role, bandLow, bandHigh);
+                ble.setFrameSink(machine::receiveBle);
+                machine.start();
+                break;
+            case "admit":
+                requireMachine().policy(true);
+                break;
+            case "refuse":
+                requireMachine().policy(false);
+                break;
+            case "stop":
+                requireMachine().close();
+                machine = null;
+                installDiagnosticBleSink();
+                log("MACHINE stopped");
+                break;
+            default:
+                throw new IllegalArgumentException("unknown machine action");
+        }
+    }
+
+    private MachineAdapter requireMachine() {
+        if (machine == null) {
+            throw new IllegalStateException("machine is not running");
+        }
+        return machine;
+    }
+
+    private void installDiagnosticBleSink() {
+        ble.setFrameSink(frame -> {
+            log("BLE frame in " + frame.length + " bytes: " + BleBench.hex(frame));
+            final String described = Mcl.describeTier0(frame, frame.length);
+            if (described != null) {
+                log("  which decodes as " + described);
+            }
+            work.post(() -> log("BLE echo "
+                    + (ble.sendFrame(frame) ? "sent" : "REFUSED")));
+        });
     }
 
     /**
@@ -256,16 +344,6 @@ public final class BenchActivity extends Activity {
         switch (which.toUpperCase()) {
             case "PRESENCE":
                 return Mcl.encodePresence(sourceRef, 1, 60);
-            case "PRESENCE_BALANCED":
-                /*
-                 * A second, still-canonical PRESENCE for diagnosing whether
-                 * the physical path depends on the data pattern.  The normal
-                 * reference value 1 produces a 25-zero-symbol run once the
-                 * PHY header is included; this opaque revision token keeps
-                 * the same object and length while breaking that run.  It is
-                 * a lab cell, not the deployment's advertised capability.
-                 */
-                return Mcl.encodePresence(sourceRef, 0xA5C35A, 60);
             case "OFFER":
                 /* transport 3 = BLE, profile 1 = BLE-GATT, a token that is
                    this run's, and 30 s of validity. */
