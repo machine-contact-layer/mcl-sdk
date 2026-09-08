@@ -27,7 +27,7 @@ Final application image built 2026-09-09:
 
 | measurement | value |
 |---|---:|
-| application partition image | 1,268,640 bytes |
+| application partition image | 1,268,720 bytes |
 | configured application partition | 3,145,728 bytes |
 | linked global/static DRAM | 241,392 bytes |
 | linker-reported DRAM remaining | 86,288 bytes |
@@ -45,6 +45,9 @@ The hot AP correlation window and scratch remain in internal DRAM. Only the
 single-producer/single-consumer capture queue is in PSRAM. The positive-traffic
 receipt and final quiet control are in
 `hardware/dfr1154-autonomous-node/runs/20260909-continuous-positive-receive.md`.
+The later facade/API refresh is recorded separately in
+`hardware/dfr1154-autonomous-node/runs/20260909-post-adoption-facade-refresh.md`;
+it was build/flash/boot verified but did not repeat the acoustic campaign.
 
 ## Qualification rule for a new port
 
