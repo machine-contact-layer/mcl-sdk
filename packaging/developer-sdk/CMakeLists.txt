@@ -44,6 +44,13 @@ if(MCL_DEVELOPER_SDK_BUILD_EXAMPLE)
         C_STANDARD 99
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
+
+    add_executable(mcl_resource_report examples/resource_report.c)
+    target_link_libraries(mcl_resource_report PRIVATE mcl_sdk)
+    set_target_properties(mcl_resource_report PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
 endif()
 
 include(GNUInstallDirs)

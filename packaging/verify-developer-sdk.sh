@@ -22,6 +22,17 @@ cmake --build "$WORK/build-sdk" --config Release --target install -j 4 \
 
 echo "  one package configured, built and installed"
 
+RESOURCE_EXE=
+for candidate in \
+    "$WORK/build-sdk/mcl_resource_report" \
+    "$WORK/build-sdk/mcl_resource_report.exe" \
+    "$WORK/build-sdk/Release/mcl_resource_report.exe"
+do
+    if [ -f "$candidate" ]; then RESOURCE_EXE=$candidate; break; fi
+done
+[ -n "$RESOURCE_EXE" ] || { echo "FAILED: resource report missing"; exit 1; }
+"$RESOURCE_EXE" | tee "$WORK/resource-envelope.txt"
+
 if grep -Eq 'mcl_(wire|link|rdv|node|contact|handoff)_' \
         "$ROOT/mcl-sdk/packaging/external-consumer/main.c"; then
     echo "FAILED: normal consumer contains a low-level protocol call"

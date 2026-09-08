@@ -18,6 +18,10 @@ the ten questions a builder actually asks and is explicit about what MCL does
 not do yet — including that `MCL Stranger-Contact 1` is claimable only with a
 stated caveat, and that there is no cryptography anywhere in v1.
 
+Sizing a port? [`RESOURCE_ENVELOPE.md`](RESOURCE_ENVELOPE.md) records the
+executable portable structure sizes and the inclusive ESP32-S3 image, DRAM,
+heap, PSRAM, queue, and positive-receive measurements.
+
 ## Implementation Contract
 
 The reference stack targets a conservative **C99** subset:

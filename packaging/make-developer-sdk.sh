@@ -12,9 +12,6 @@ if [ -z "$OUT" ]; then
     echo "usage: $0 OUTPUT_DIRECTORY" >&2
     exit 2
 fi
-case "$OUT" in
-    /|.|..|"$ROOT"|"$ROOT"/*) ;;
-esac
 if [ -e "$OUT" ]; then
     echo "refusing to overwrite existing output: $OUT" >&2
     exit 2
@@ -63,8 +60,10 @@ do
 done
 
 cp "$ROOT/mcl-sdk/examples/first_contact.c" "$OUT/examples/"
+cp "$ROOT/mcl-sdk/examples/resource_report.c" "$OUT/examples/"
 cp "$ROOT/mcl-sdk/QUICKSTART.md" "$OUT/"
 cp "$ROOT/mcl-sdk/PORTING.md" "$OUT/"
+cp "$ROOT/mcl-sdk/RESOURCE_ENVELOPE.md" "$OUT/"
 cp "$ROOT/mcl-sdk/LICENSE" "$OUT/"
 cp "$ROOT/mcl-sdk/NOTICE" "$OUT/"
 cp "$ROOT/mcl-sdk/packaging/developer-sdk/CMakeLists.txt" "$OUT/CMakeLists.txt"
