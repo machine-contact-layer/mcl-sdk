@@ -17,6 +17,7 @@
 #>
 param(
     [string]$ArduinoCli = 'C:\Program Files\Arduino CLI\arduino-cli.exe',
+    [string]$ArduinoDataDir = (Join-Path $env:LOCALAPPDATA 'Arduino15'),
     # Which sketch to build. `node` is the deliverable. `spike` is the BLE
     # memory feasibility measurement that decided whether this board can hold
     # a BLE stack next to the audio arena at all; it stays buildable so the
@@ -51,6 +52,20 @@ $IpDir     = Join-Path $Root 'mcl-ip'
 # moving their hot inner-loop working set to PSRAM would change the measured
 # decoder cost. See runs/20260909-continuous-positive-receive.md.
 $fqbn = 'esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi'
+$qualifiedCoreVersion = '3.3.11'
+if (-not (Test-Path -LiteralPath $ArduinoCli -PathType Leaf)) {
+    throw "arduino-cli not found at $ArduinoCli"
+}
+$installedCores = & $ArduinoCli core list --format json | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'Cannot inventory the Arduino core' }
+$esp32Core = $installedCores.platforms | Where-Object { $_.id -eq 'esp32:esp32' }
+if ($esp32Core.installed_version -ne $qualifiedCoreVersion) {
+    throw "This adapter is qualified against esp32 core $qualifiedCoreVersion; installed version differs."
+}
+$bleSourceRoot = Join-Path $ArduinoDataDir "packages\esp32\hardware\esp32\$qualifiedCoreVersion\libraries\BLE\src"
+if (-not (Test-Path -LiteralPath $bleSourceRoot -PathType Container)) {
+    throw 'BLE source directory unavailable; set -ArduinoDataDir to the Arduino data directory.'
+}
 
 $Backup = Join-Path $env:USERPROFILE 'Downloads\MCL_DFR1154_BACKUP_20260902\dfr1154-factory-app-before-mcl.bin'
 
@@ -82,7 +97,13 @@ $sketchSource = if ($Sketch -eq 'spike') {
     Join-Path $scriptDir 'dfr1154_autonomous_node\dfr1154_autonomous_node.ino'
 }
 $staging = Join-Path ([System.IO.Path]::GetTempPath()) $stagingName
-if (Test-Path -LiteralPath $staging) { Remove-Item -Recurse -Force $staging }
+$tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\')
+$staging = [System.IO.Path]::GetFullPath($staging)
+if ((Split-Path -Parent $staging) -ne $tempRoot -or
+    (Split-Path -Leaf $staging) -ne $stagingName) {
+    throw "Staging path escaped its exact temporary directory: $staging"
+}
+if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $staging | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $staging 'mcl') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $staging 'src') | Out-Null
@@ -196,16 +217,23 @@ $manifestPath = if ($Sketch -eq 'spike') {
 }
 $lines = @(
     'MCL autonomous node firmware build',
-    "built: $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')",
+    "built: $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))",
     "fqbn:  $fqbn",
+    "esp32 core: $qualifiedCoreVersion",
     '',
     'STAGED SOURCES, copied from the canonical repositories at build time.',
     'The board runs the same source the host runs; these hashes say which.',
     ''
 )
-foreach ($f in ($headers + $sources)) {
+foreach ($f in (@($sketchSource, $PSCommandPath) + $headers + $sources)) {
     $h = (Get-FileHash -Algorithm SHA256 -LiteralPath $f).Hash
     $lines += ("  {0,-24} {1}" -f (Split-Path -Leaf $f), $h)
+}
+$lines += @('', 'BLE LIBRARY SOURCES (installed core, not an unrecorded latest version)', '')
+foreach ($libraryFile in (Get-ChildItem -LiteralPath $bleSourceRoot -File | Sort-Object Name)) {
+    if ($libraryFile.Extension -notin @('.h', '.cpp')) { continue }
+    $h = (Get-FileHash -Algorithm SHA256 -LiteralPath $libraryFile.FullName).Hash
+    $lines += ("  {0,-34} {1}" -f $libraryFile.Name, $h)
 }
 $lines += @(
     '',
@@ -223,4 +251,4 @@ $lines | Set-Content -Path $manifestPath -Encoding utf8
 Write-Host ''
 Write-Host 'Not flashed. Run flash-app-only.ps1 to write the application partition.' -ForegroundColor Yellow
 
-if (-not $KeepStaging) { Remove-Item -Recurse -Force $staging }
+if (-not $KeepStaging) { Remove-Item -LiteralPath $staging -Recurse -Force }

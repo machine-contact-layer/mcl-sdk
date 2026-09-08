@@ -109,6 +109,8 @@ cp "$ROOT/mcl-sdk/NOTICE" "$OUT/"
 cp "$ROOT/mcl-sdk/packaging/developer-sdk/CMakeLists.txt" "$OUT/CMakeLists.txt"
 cp "$ROOT/mcl-sdk/packaging/developer-sdk/mcl_sdkConfig.cmake.in" "$OUT/cmake/"
 
+python3 "$ROOT/mcl-sdk/packaging/package-docs.py" "$OUT" --root "$ROOT"
+
 (
     cd "$OUT"
     find . -type f ! -name SHA256SUMS.txt -print | LC_ALL=C sort |

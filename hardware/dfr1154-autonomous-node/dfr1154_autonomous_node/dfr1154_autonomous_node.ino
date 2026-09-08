@@ -137,6 +137,7 @@
  */
 
 #include <Arduino.h>
+#include <atomic>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <WebServer.h>
@@ -149,6 +150,7 @@
 #include <BLEUtils.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
+#include "host/ble_gap.h"
 
 #include "mcl/ap_listen.h"
 #include "mcl/ap_modem.h"
@@ -320,7 +322,9 @@ struct LogEntry {
     char     text[kLogTextMax];
 };
 
-LogEntry g_log[kLogEntries];
+/* Cold evidence storage, not the decoder's hot working set. Reserving this
+   in PSRAM leaves internal memory for the BLE worker and controller. */
+LogEntry *g_log = nullptr;
 size_t   g_log_head = 0;     /* next write position */
 size_t   g_log_count = 0;    /* entries currently held */
 uint32_t g_log_dropped = 0;  /* entries overwritten before being read */
@@ -493,6 +497,8 @@ const char *phase_name(uint8_t p) {
 }
 
 volatile uint8_t g_run_state = RUN_IDLE;
+bool g_finish_pending = false;
+uint8_t g_finish_state = RUN_STOPPED;
 uint8_t  g_phase = PHASE_CONTROL;
 uint32_t g_run_started_ms = 0;
 uint32_t g_run_ended_ms = 0;
@@ -883,7 +889,7 @@ const char *ble_role_name(uint8_t r) {
 
 bool     g_ble_up = false;
 uint8_t  g_ble_role = BLE_ROLE_NONE;
-volatile bool g_ble_connected = false;
+std::atomic<bool> g_ble_connected{false};
 
 BLEServer            *g_server   = nullptr;
 BLECharacteristic    *g_tx_char  = nullptr;   /* peripheral -> central, notify */
@@ -898,7 +904,9 @@ mcl_ble_reassembler_t g_reasm;
  * candidate, one control at a time, and a queue would only hide a scheduling
  * bug behind a buffer.
  */
-volatile bool g_ble_frame_ready = false;
+/* Publish the payload across the BLE callback and loop tasks. Volatile alone
+ * does not make the payload writes visible before the ready flag. */
+std::atomic<bool> g_ble_frame_ready{false};
 size_t        g_ble_frame_size = 0;
 uint8_t       g_ble_frame[MCL_LINK_FRAME_MAX_SIZE];
 uint32_t      g_ble_frames_lost = 0;   /* mailbox occupied when a frame landed */
@@ -1013,7 +1021,7 @@ bool advertisement_matches(const uint8_t *payload, size_t len,
             value_len >= MCL_BLE_SERVICE_UUID_SIZE) {
             if (memcmp(value, kServiceUuidLe, MCL_BLE_SERVICE_UUID_SIZE) == 0) {
                 *uuid_seen = true;
-                if (value_len >= MCL_BLE_SERVICE_UUID_SIZE + MCL_RENDEZVOUS_BEACON_SIZE &&
+                if (value_len == MCL_BLE_SERVICE_UUID_SIZE + MCL_RENDEZVOUS_BEACON_SIZE &&
                     memcmp(value + MCL_BLE_SERVICE_UUID_SIZE, want_beacon,
                            MCL_RENDEZVOUS_BEACON_SIZE) == 0) {
                     return true;
@@ -1027,10 +1035,11 @@ bool advertisement_matches(const uint8_t *payload, size_t len,
 
 /* What the scanner found, handed to the main loop rather than acted on in the
    BLE task. */
-volatile bool g_scan_hit = false;
+std::atomic<bool> g_scan_hit{false};
 uint8_t  g_scan_addr[6] = {0};
 uint8_t  g_scan_addr_type = 0;
 uint8_t  g_scan_raw[62] = {0};
+portMUX_TYPE g_scan_mux = portMUX_INITIALIZER_UNLOCKED;
 size_t   g_scan_raw_len = 0;
 uint32_t g_wanted_token = 0;   /* the peer's, learned from the air */
 uint8_t  g_wanted_beacon[MCL_RENDEZVOUS_BEACON_SIZE] = {0};
@@ -1051,14 +1060,159 @@ class NodeScanCallbacks : public BLEAdvertisedDeviceCallbacks {
         ++g_counters.scan_matches;
 
         BLEAddress addr = device.getAddress();
+        portENTER_CRITICAL(&g_scan_mux);
+        if (g_scan_hit.load()) { portEXIT_CRITICAL(&g_scan_mux); return; }
         memcpy(g_scan_addr, addr.getNative(), 6);
         g_scan_addr_type = device.getAddressType();
         g_scan_raw_len = (len > sizeof(g_scan_raw)) ? sizeof(g_scan_raw) : len;
         memcpy(g_scan_raw, payload, g_scan_raw_len);
         g_scan_hit = true;
+        portEXIT_CRITICAL(&g_scan_mux);
     }
 };
 NodeScanCallbacks g_scan_callbacks;
+
+/* Only the worker invokes blocking central operations. Main owns MCL, scan
+   restarts and log writes. Release/acquire publication protects the request
+   and receipt; a cancelled completion can never ready a later transaction. */
+enum ActivationWork { WORK_IDLE, WORK_CONNECT, WORK_DONE };
+std::atomic<int> g_activation_work{WORK_IDLE};
+std::atomic<bool> g_activation_cancel{false};
+std::atomic<int> g_gap_status{-1};
+std::atomic<int> g_gap_handle{-1};
+TaskHandle_t g_activation_task = nullptr;
+ble_gap_event_listener g_gap_listener;
+bool g_gap_listener_registered = false;
+bool g_candidate_active = false;
+bool g_candidate_close_pending = false;
+uint32_t g_connect_started_ms = 0;
+uint32_t g_connect_heartbeat_ms = 0;
+uint32_t g_connect_loop_ticks = 0;
+uint32_t g_client_creations = 0;
+uint32_t g_retry_test_attempts = 0;
+uint32_t g_retry_test_completions = 0;
+uint32_t g_retry_test_next_ms = 0;
+bool g_retry_test_ok = true;
+uint32_t g_retry_test_first_heap = 0;
+uint32_t g_retry_test_first_largest = 0;
+constexpr uint32_t kActivationOperationMs = 30000;
+struct HeapReceipt { uint32_t free_bytes; uint32_t largest; };
+struct ActivationReceipt {
+    HeapReceipt before_create, after_create, before_connect, after_connect, cleanup;
+    bool connected, ready, retryable, cleanup_ok;
+    uint32_t elapsed_ms, stack_free;
+    int gap_status;
+};
+ActivationReceipt g_activation_receipt{};
+uint8_t g_connect_addr[6];
+uint8_t g_connect_addr_type = 0;
+int g_cancel_status = -1;
+int g_terminate_status = -1;
+uint32_t g_cancel_last_ms = 0;
+
+/* getNative() is already little-endian on NimBLE. Its uint8_t[] constructor
+   reverses bytes; its ble_addr_t constructor preserves native order/type. */
+BLEAddress address_from_native(const uint8_t *bytes, uint8_t type) {
+    ble_addr_t native{};
+    memcpy(native.val, bytes, sizeof(native.val));
+    native.type = type;
+    return BLEAddress(native);
+}
+
+int activation_connection_handle() {
+    ble_addr_t native{};
+    memcpy(native.val, g_connect_addr, sizeof(native.val));
+    native.type = g_connect_addr_type;
+    ble_gap_conn_desc descriptor{};
+    return ble_gap_conn_find_by_addr(&native, &descriptor) == 0
+        ? static_cast<int>(descriptor.conn_handle) : -1;
+}
+
+HeapReceipt activation_heap() {
+    return {static_cast<uint32_t>(ESP.getFreeHeap()),
+            static_cast<uint32_t>(ESP.getMaxAllocHeap())};
+}
+
+int activation_gap_event(ble_gap_event *event, void *) {
+    if (event->type == BLE_GAP_EVENT_CONNECT) {
+        g_gap_status.store(event->connect.status);
+        if (event->connect.status == 0) { g_gap_handle.store(event->connect.conn_handle); }
+    } else if (event->type == BLE_GAP_EVENT_DISCONNECT) {
+        g_gap_handle.store(-1);
+    }
+    return 0;
+}
+
+/* NimBLE's connection attempt and discovery must be cancelled through its
+   controller API. Do not delete a task/client out from under a GAP callback. */
+void activation_cancel_io() {
+    g_activation_cancel.store(true);
+    if (!g_ble_up) { return; }
+    if (millis() - g_cancel_last_ms < 100u) { return; }
+    g_cancel_last_ms = millis();
+    g_cancel_status = ble_gap_conn_cancel();
+    const int handle = activation_connection_handle();
+    if (handle >= 0) {
+        g_terminate_status = ble_gap_terminate(static_cast<uint16_t>(handle), BLE_ERR_REM_USER_CONN_TERM);
+    }
+}
+
+void activation_worker(void *) {
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        if (g_activation_work.load(std::memory_order_acquire) != WORK_CONNECT) { continue; }
+        ActivationReceipt receipt{};
+        const uint32_t started = millis();
+        receipt.before_create = activation_heap();
+        if (g_client == nullptr && !g_activation_cancel.load()) {
+            g_client = BLEDevice::createClient();
+            if (g_client != nullptr) { ++g_client_creations; }
+        }
+        receipt.after_create = activation_heap();
+        receipt.before_connect = activation_heap();
+        receipt.retryable = (g_client != nullptr);
+        if (g_client != nullptr && !g_activation_cancel.load()) {
+            BLEAddress address = address_from_native(g_connect_addr, g_connect_addr_type);
+            receipt.connected = g_client->connect(address, g_connect_addr_type);
+        }
+        receipt.after_connect = activation_heap();
+        receipt.gap_status = g_gap_status.load();
+        if (receipt.connected && !g_activation_cancel.load()) {
+            /* A failed discovery ends this transaction: do not reuse a
+               partially cached service tree for a different peer. */
+            receipt.retryable = false;
+            BLERemoteService *service = g_client->getService(BLEUUID(MCL_SERVICE_UUID));
+            if (service != nullptr && !g_activation_cancel.load()) {
+                BLERemoteCharacteristic *rx = service->getCharacteristic(BLEUUID(MCL_RX_CHAR_UUID));
+                BLERemoteCharacteristic *tx = service->getCharacteristic(BLEUUID(MCL_TX_CHAR_UUID));
+                if (rx != nullptr && tx != nullptr && rx->canWriteNoResponse() &&
+                    tx->canNotify() && !g_activation_cancel.load()) {
+                    receipt.ready = tx->subscribe(true, client_notify_cb, true);
+                    if (receipt.ready) { g_remote_rx = rx; }
+                }
+            }
+        }
+        if (g_activation_cancel.load()) { receipt.ready = false; }
+        receipt.cleanup_ok = true;
+        if (!receipt.ready) {
+            g_remote_rx = nullptr;
+            const int handle = activation_connection_handle();
+            if (handle >= 0) {
+                (void)ble_gap_terminate(static_cast<uint16_t>(handle), BLE_ERR_REM_USER_CONN_TERM);
+            }
+            const uint32_t cleanup_started = millis();
+            while (activation_connection_handle() >= 0 && millis() - cleanup_started < 2000u) {
+                delay(10);
+            }
+            receipt.cleanup_ok = activation_connection_handle() < 0;
+        }
+        receipt.cleanup = activation_heap();
+        receipt.elapsed_ms = millis() - started;
+        receipt.stack_free = uxTaskGetStackHighWaterMark(nullptr);
+        g_activation_receipt = receipt;
+        g_activation_work.store(WORK_DONE, std::memory_order_release);
+    }
+}
 
 /* ------------------------------------------------------------ BLE bring-up */
 
@@ -1076,6 +1230,16 @@ bool ble_stack_up() {
         return false;
     }
     g_ble_up = true;
+    g_gap_handle.store(-1);
+    g_gap_status.store(-1);
+    g_gap_listener_registered =
+        ble_gap_event_listener_register(&g_gap_listener, activation_gap_event, nullptr) == 0;
+    if (!g_gap_listener_registered) {
+        log_line("BLE GAP instrumentation registration refused");
+        BLEDevice::deinit(true);
+        g_ble_up = false;
+        return false;
+    }
     mcl_ble_reassembler_reset(&g_reasm);
     log_line("BLE up free_heap=%lu largest=%lu",
              static_cast<unsigned long>(ESP.getFreeHeap()),
@@ -1101,6 +1265,12 @@ bool ble_stack_up() {
  */
 void ble_stack_down() {
     if (!g_ble_up) { return; }
+    if (g_activation_work.load(std::memory_order_acquire) == WORK_CONNECT) {
+        g_candidate_active = false;
+        g_candidate_close_pending = true;
+        activation_cancel_io();
+        return;  /* the worker must acknowledge before its client is freed */
+    }
 
     if (g_ble_role == BLE_ROLE_PERIPHERAL) {
         BLEDevice::stopAdvertising();
@@ -1128,13 +1298,22 @@ void ble_stack_down() {
     }
     g_ble_connected = false;
 
-    BLEDevice::deinit(true);
+    if (g_gap_listener_registered) {
+        (void)ble_gap_event_listener_unregister(&g_gap_listener);
+        g_gap_listener_registered = false;
+    }
+    BLEDevice::deinit(true);  /* owns the one client allocated by createClient */
     g_ble_up = false;
     g_ble_connected = false;
     g_server = nullptr;
     g_tx_char = nullptr;
     g_client = nullptr;
     g_remote_rx = nullptr;
+    g_ble_frame_ready = false;
+    g_ble_role = BLE_ROLE_NONE;
+    g_scan_hit.store(false);
+    g_gap_handle.store(-1);
+    g_client_creations = 0;
     delay(200);
     log_line("BLE down free_heap=%lu",
              static_cast<unsigned long>(ESP.getFreeHeap()));
@@ -1259,7 +1438,9 @@ bool ble_become_central(uint32_t peer_token) {
  * clearResults() is safe.
  */
 void ble_scan_pump() {
-    if (g_ble_role != BLE_ROLE_CENTRAL || g_ble_connected || !g_ble_up) { return; }
+    if (g_ble_role != BLE_ROLE_CENTRAL || g_ble_connected || !g_ble_up ||
+        g_candidate_close_pending ||
+        g_activation_work.load(std::memory_order_acquire) != WORK_IDLE) { return; }
     BLEScan *scan = BLEDevice::getScan();
     if (scan->isScanning()) { return; }
     scan->start(kScanSliceSeconds, nullptr, false);
@@ -1268,40 +1449,30 @@ void ble_scan_pump() {
 }
 
 bool ble_connect_to_hit() {
-    BLEAddress addr(g_scan_addr);
+    if (g_activation_task == nullptr ||
+        g_activation_work.load(std::memory_order_acquire) != WORK_IDLE) { return false; }
     BLEDevice::getScan()->stop();
-
-    log_line("BLE found %s type=%u adv_len=%u",
-             addr.toString().c_str(), static_cast<unsigned>(g_scan_addr_type),
-             static_cast<unsigned>(g_scan_raw_len));
-
-    g_client = BLEDevice::createClient();
-    if (!g_client->connect(addr, g_scan_addr_type)) {
-        log_line("BLE connect refused");
+    memcpy(g_connect_addr, g_scan_addr, sizeof(g_connect_addr));
+    g_connect_addr_type = g_scan_addr_type;
+    BLEAddress addr = address_from_native(g_connect_addr, g_connect_addr_type);
+    if (memcmp(addr.getNative(), g_scan_addr, sizeof(g_scan_addr)) != 0 ||
+        addr.getType() != g_scan_addr_type) {
+        log_line("BLE native address round trip refused");
         return false;
     }
-
-    BLERemoteService *service = g_client->getService(BLEUUID(MCL_SERVICE_UUID));
-    if (service == nullptr) {
-        log_line("BLE service absent on peer");
-        g_client->disconnect();
-        return false;
-    }
-    g_remote_rx = service->getCharacteristic(BLEUUID(MCL_RX_CHAR_UUID));
-    BLERemoteCharacteristic *remote_tx =
-        service->getCharacteristic(BLEUUID(MCL_TX_CHAR_UUID));
-    if (g_remote_rx == nullptr || remote_tx == nullptr) {
-        log_line("BLE characteristics absent on peer");
-        g_client->disconnect();
-        return false;
-    }
-    if (remote_tx->canNotify()) {
-        remote_tx->registerForNotify(client_notify_cb);
-    }
-    mcl_ble_reassembler_reset(&g_reasm);
-    g_ble_connected = true;
-    log_line("BLE connected as central");
-    return true;
+    log_line("BLE found %s type=%u adv_len=%u", addr.toString().c_str(),
+             static_cast<unsigned>(g_connect_addr_type), static_cast<unsigned>(g_scan_raw_len));
+    g_scan_hit.store(false);
+    g_gap_status.store(-1);
+    g_cancel_status = g_terminate_status = -1;
+    g_cancel_last_ms = 0;
+    g_activation_cancel.store(false);
+    g_connect_started_ms = millis();
+    g_connect_heartbeat_ms = g_connect_started_ms;
+    g_connect_loop_ticks = 0;
+    g_activation_work.store(WORK_CONNECT, std::memory_order_release);
+    xTaskNotifyGive(g_activation_task);
+    return true;  /* queued, NOT connected */
 }
 
 /* ---------------------------------------------------------- BLE egress */
@@ -1431,7 +1602,13 @@ mcl_machine_candidate_t plat_candidate_open(void *, uint8_t transport_id,
                                             uint32_t peer_endpoint_token,
                                             uint32_t local_endpoint_token) {
     (void)profile_id;
+    if (g_candidate_close_pending ||
+        g_activation_work.load(std::memory_order_acquire) != WORK_IDLE) {
+        return MCL_MACHINE_CANDIDATE_REFUSED;
+    }
+    g_candidate_active = true;
     if (transport_id != MCL_CONTACT_TRANSPORT_BLE) {
+        g_candidate_active = false;
         log_line("candidate on transport %u not implemented by this node",
                  static_cast<unsigned>(transport_id));
         return MCL_MACHINE_CANDIDATE_REFUSED;
@@ -1446,6 +1623,8 @@ mcl_machine_candidate_t plat_candidate_open(void *, uint8_t transport_id,
         log_line("acceptor: peer token %08lX learned from the air",
                  static_cast<unsigned long>(peer_endpoint_token));
         if (!ble_become_central(peer_endpoint_token)) {
+            g_candidate_active = false;
+            g_candidate_close_pending = g_ble_up;
             return MCL_MACHINE_CANDIDATE_REFUSED;
         }
         /* Scanning, connecting: not usable yet. */
@@ -1453,6 +1632,7 @@ mcl_machine_candidate_t plat_candidate_open(void *, uint8_t transport_id,
     }
 
     if (local_endpoint_token == 0u) {
+        g_candidate_active = false;
         /* BLE-ACTIVATE-1 section 3: a zero token names nothing, because this
            profile's discovery IS the token. Refuse rather than advertise
            something no scanner can select. */
@@ -1464,6 +1644,8 @@ mcl_machine_candidate_t plat_candidate_open(void *, uint8_t transport_id,
     log_line("offerer: advertising own token %08lX",
              static_cast<unsigned long>(local_endpoint_token));
     if (!ble_become_peripheral(local_endpoint_token)) {
+        g_candidate_active = false;
+        g_candidate_close_pending = g_ble_up;
         return MCL_MACHINE_CANDIDATE_REFUSED;
     }
     /* A peripheral is reachable the moment it advertises. */
@@ -1473,6 +1655,11 @@ mcl_machine_candidate_t plat_candidate_open(void *, uint8_t transport_id,
 void plat_candidate_close(void *, uint8_t transport_id) {
     log_line("candidate closed on transport %u",
              static_cast<unsigned>(transport_id));
+    g_candidate_active = false;
+    g_candidate_close_pending = true;
+    g_activation_deadline_ms = 0;
+    if (g_ble_up && g_ble_role == BLE_ROLE_CENTRAL) { BLEDevice::getScan()->stop(); }
+    activation_cancel_io();
 }
 
 /*
@@ -1542,6 +1729,79 @@ void machine_start() {
              static_cast<unsigned>(g_config.candidate_transport));
 }
 
+void log_heap_receipt(const char *stage, const HeapReceipt &heap) {
+    log_line("BLE %s heap=%lu largest=%lu", stage,
+             static_cast<unsigned long>(heap.free_bytes),
+             static_cast<unsigned long>(heap.largest));
+}
+
+/* Called even after MCL closes a candidate or the run ends. No worker writes
+   the MCL state or log ring, and teardown never frees a live worker's client. */
+void activation_service() {
+    const int work = g_activation_work.load(std::memory_order_acquire);
+    if (work == WORK_CONNECT) {
+        ++g_connect_loop_ticks;
+        const uint32_t operation_ms = (g_config.scenario == 6u) ? 5000u : kActivationOperationMs;
+        if (!g_candidate_active || millis() - g_connect_started_ms >= operation_ms) {
+            activation_cancel_io();
+        }
+        if (millis() - g_connect_heartbeat_ms >= 5000u) {
+            g_connect_heartbeat_ms = millis();
+            log_line("BLE pending ticks=%lu queued=%lu dropped=%lu",
+                     static_cast<unsigned long>(g_connect_loop_ticks),
+                     static_cast<unsigned long>(capture_queued()),
+                     static_cast<unsigned long>(g_capture_dropped));
+        }
+        return;
+    }
+    if (work == WORK_DONE) {
+        const ActivationReceipt receipt = g_activation_receipt;
+        log_heap_receipt("before_create", receipt.before_create);
+        log_heap_receipt("after_create", receipt.after_create);
+        log_heap_receipt("before_connect", receipt.before_connect);
+        log_heap_receipt("after_connect", receipt.after_connect);
+        log_heap_receipt("cleanup", receipt.cleanup);
+        log_line("BLE result connect=%u ready=%u gap=%d ms=%lu", receipt.connected,
+                 receipt.ready, receipt.gap_status, static_cast<unsigned long>(receipt.elapsed_ms));
+        log_line("BLE resource clients=%lu cleanup=%u stack_free=%lu",
+                 static_cast<unsigned long>(g_client_creations), receipt.cleanup_ok,
+                 static_cast<unsigned long>(receipt.stack_free));
+        log_line("BLE cancel_rc=%d terminate_rc=%d gap=-1 means unobserved",
+                 g_cancel_status, g_terminate_status);
+        g_activation_work.store(WORK_IDLE, std::memory_order_release);
+        if (g_config.scenario == 6u && g_run_state == RUN_RUNNING) {
+            ++g_retry_test_completions;
+            g_retry_test_ok = g_retry_test_ok && !receipt.connected && !receipt.ready &&
+                receipt.cleanup_ok && g_client_creations == 1u && g_connect_loop_ticks > 10u;
+            g_retry_test_next_ms = millis() + 1000u;
+        } else if (g_config.scenario == 7u && g_run_state == RUN_RUNNING) {
+            g_ble_connected = g_candidate_active && !g_activation_cancel.load() && receipt.ready;
+            if (!g_ble_connected) {
+                g_candidate_active = false;
+                g_candidate_close_pending = true;
+                snprintf(g_run_failure, sizeof(g_run_failure), "central diagnostic activation refused");
+            }
+        } else if (g_candidate_active && !g_activation_cancel.load() && receipt.ready &&
+            g_machine.awaiting_candidate != 0u) {
+            g_ble_connected = true;
+            if (mcl_machine_candidate_ready(&g_machine) != MCL_MACHINE_OK) {
+                plat_candidate_close(nullptr, MCL_CONTACT_TRANSPORT_BLE);
+            }
+        } else if (g_candidate_active &&
+                   (!receipt.retryable || !receipt.cleanup_ok || g_activation_cancel.load())) {
+            (void)mcl_machine_candidate_refused(&g_machine);
+        } else if (!g_candidate_active) {
+            g_candidate_close_pending = true;
+        }
+        /* A clean failed connect reuses this client; scanning resumes only
+           through ble_scan_pump's bounded, clearing slice. */
+    }
+    if (g_candidate_close_pending && g_activation_work.load() == WORK_IDLE) {
+        ble_stack_down();
+        if (!g_ble_up) { g_candidate_close_pending = false; }
+    }
+}
+
 void machine_pump() {
     /* Frames that arrived on the candidate while we were elsewhere. */
     if (g_ble_frame_ready) {
@@ -1551,24 +1811,15 @@ void machine_pump() {
     }
 
     ble_scan_pump();
-
-    /* The scanner found the transaction it was told to look for. */
-    if (g_scan_hit && g_ble_role == BLE_ROLE_CENTRAL && !g_ble_connected) {
-        g_scan_hit = false;
+    if (g_candidate_active && g_scan_hit.load() &&
+        g_ble_role == BLE_ROLE_CENTRAL && !g_ble_connected &&
+        g_activation_work.load(std::memory_order_acquire) == WORK_IDLE) {
         tag_value("peer_ble_address",
                   (static_cast<uint32_t>(g_scan_addr[2]) << 24) |
                   (static_cast<uint32_t>(g_scan_addr[3]) << 16) |
                   (static_cast<uint32_t>(g_scan_addr[4]) << 8) |
-                  static_cast<uint32_t>(g_scan_addr[5]),
-                  PROV_FROM_BEARER);
-        if (ble_connect_to_hit()) {
-            if (mcl_machine_candidate_ready(&g_machine) != MCL_MACHINE_OK) {
-                log_line("candidate_ready refused");
-            }
-        } else {
-            /* Keep looking: the activation window is still open. */
-            BLEDevice::getScan()->start(0, nullptr, true);
-        }
+                  static_cast<uint32_t>(g_scan_addr[5]), PROV_FROM_BEARER);
+        (void)ble_connect_to_hit();
     }
 
     mcl_machine_event_t ev;
@@ -1834,6 +2085,9 @@ void scenario_rendezvous_tick() {
          */
         log_line("activation window expired without a connection");
         g_activation_deadline_ms = 0;
+        if (g_machine.awaiting_candidate != 0u) {
+            (void)mcl_machine_candidate_refused(&g_machine);
+        }
     }
 }
 
@@ -1906,6 +2160,109 @@ void scenario_ble_diagnostic_tick(bool advertise) {
            stopping here would report one advertisement as a whole run. The
            slice pump re-arms it; restarting with is_continue = true here is
            what made this scenario reboot the board. */
+    }
+}
+
+/* Scenario 6 is a fault-injection instrument, never zero-prior evidence.
+   It dials a fixed diagnostic address twice, cancels each attempt after five
+   seconds, and services the production acoustic listener throughout. No peer
+   address can be supplied by the control plane. A real connection fails the
+   diagnostic; it is not silently counted as a successful cancellation. */
+void scenario_retry_diagnostic_tick() {
+    scenario_listen_tick();
+    if (!g_diag_started) {
+        g_diag_started = true;
+        tag_value("diagnostic_token", kDiagnosticToken, PROV_CONFIGURED);
+        tag_value("diagnostic_address", 1u, PROV_CONFIGURED);
+        g_retry_test_attempts = g_retry_test_completions = 0;
+        g_retry_test_next_ms = 0;
+        g_retry_test_first_heap = g_retry_test_first_largest = 0;
+        g_retry_test_ok = true;
+        g_candidate_active = true;
+        set_phase(PHASE_ACTIVATE);
+        if (!ble_become_central(kDiagnosticToken)) {
+            scenario_end(RUN_FAILED, "retry diagnostic BLE init refused");
+            return;
+        }
+        BLEDevice::getScan()->stop();
+    }
+    if (g_activation_work.load(std::memory_order_acquire) != WORK_IDLE ||
+        static_cast<int32_t>(millis() - g_retry_test_next_ms) < 0) { return; }
+    if (g_retry_test_completions != 0u) {
+        const HeapReceipt heap = activation_heap();
+        log_heap_receipt("settled_retry", heap);
+        if (g_retry_test_completions == 1u) {
+            g_retry_test_first_heap = heap.free_bytes;
+            g_retry_test_first_largest = heap.largest;
+        } else {
+            /* Frozen tolerance for allocator/controller settling, not tuned
+               to a measured run. Retained raw snapshots remain the evidence. */
+            g_retry_test_ok = g_retry_test_ok &&
+                heap.free_bytes + 512u >= g_retry_test_first_heap &&
+                heap.largest + 512u >= g_retry_test_first_largest &&
+                g_capture_dropped == 0u;
+            log_line("RETRY_RESOURCE_%s attempts=%lu clients=%lu dropped=%lu",
+                     g_retry_test_ok ? "PASS" : "FAIL",
+                     static_cast<unsigned long>(g_retry_test_attempts),
+                     static_cast<unsigned long>(g_client_creations),
+                     static_cast<unsigned long>(g_capture_dropped));
+            scenario_end(g_retry_test_ok ? RUN_DONE : RUN_FAILED,
+                         g_retry_test_ok ? nullptr : "retry resource invariant failed");
+            return;
+        }
+    }
+    /* Exercise the same bounded clearing scan-restart path, then keep its
+       callback out of the injected-address mailbox. */
+    g_activation_cancel.store(false);
+    ble_scan_pump();
+    BLEDevice::getScan()->stop();
+    g_scan_hit.store(true);
+    const uint8_t diagnostic_address[6] = {1, 0, 0, 0, 0, 0xC0};
+    portENTER_CRITICAL(&g_scan_mux);
+    memcpy(g_scan_addr, diagnostic_address, sizeof(g_scan_addr));
+    g_scan_addr_type = BLE_ADDR_RANDOM;
+    g_scan_raw_len = 0;
+    portEXIT_CRITICAL(&g_scan_mux);
+    ++g_retry_test_attempts;
+    if (!ble_connect_to_hit()) { scenario_end(RUN_FAILED, "retry worker refused request"); }
+}
+
+/* Scenario 7: configured-token central carriage, separate from scenario 5's
+   scan-only evidence. Uses the production worker while AP remains serviced. */
+bool g_central_test_sent = false;
+void scenario_central_diagnostic_tick() {
+    scenario_listen_tick();
+    if (!g_diag_started) {
+        g_diag_started = true;
+        g_central_test_sent = false;
+        tag_value("diagnostic_token", kDiagnosticToken, PROV_CONFIGURED);
+        g_candidate_active = true;
+        set_phase(PHASE_ACTIVATE);
+        if (!ble_become_central(kDiagnosticToken)) {
+            scenario_end(RUN_FAILED, "central diagnostic BLE init refused");
+        }
+        return;
+    }
+    if (g_run_failure[0] != '\0') { scenario_end(RUN_FAILED, g_run_failure); return; }
+    ble_scan_pump();
+    if (g_scan_hit.load() && !g_ble_connected && g_activation_work.load() == WORK_IDLE) {
+        (void)ble_connect_to_hit();
+    }
+    uint8_t expected[40];
+    for (size_t i = 0; i < sizeof(expected); ++i) { expected[i] = static_cast<uint8_t>(i + 1u); }
+    if (g_ble_connected && !g_central_test_sent) {
+        g_central_test_sent = true;
+        if (ble_send_frame(expected, sizeof(expected)) != 0) {
+            scenario_end(RUN_FAILED, "central diagnostic send refused");
+        }
+    }
+    if (g_ble_frame_ready) {
+        const bool exact = g_ble_frame_size == sizeof(expected) &&
+                           memcmp(g_ble_frame, expected, sizeof(expected)) == 0;
+        g_ble_frame_ready = false;
+        log_line("CENTRAL_ROUNDTRIP_%s bytes=%u fragments=3", exact ? "PASS" : "FAIL",
+                 static_cast<unsigned>(g_ble_frame_size));
+        scenario_end(exact ? RUN_DONE : RUN_FAILED, exact ? nullptr : "central echo mismatch");
     }
 }
 
@@ -2122,9 +2479,7 @@ void handle_run() {
 
 void handle_stop() {
     if (g_run_state == RUN_RUNNING || g_run_state == RUN_ARMED) {
-        g_run_state = RUN_STOPPED;
-        g_run_ended_ms = millis();
-        log_line("stopped by control plane");
+        scenario_end(RUN_STOPPED, "stopped by control plane");
     }
     send_json(200, "{\"ok\":true}");
 }
@@ -2280,10 +2635,10 @@ void scenario_start() {
     g_run_cap_mean = 0;
     g_last_poll_pushed = 0;
     schedule_next_announce();
-    g_capture_active = (g_config.scenario < 3u);
+    g_capture_active = (g_config.scenario < 3u || g_config.scenario == 6u || g_config.scenario == 7u);
 
     g_diag_started = false;
-    const bool needs_ble = (g_config.scenario == 4u || g_config.scenario == 5u ||
+    const bool needs_ble = (g_config.scenario == 4u || g_config.scenario == 5u || g_config.scenario == 6u || g_config.scenario == 7u ||
                             (g_config.scenario == 2u &&
                              g_config.candidate_transport == MCL_CONTACT_TRANSPORT_BLE));
     if (g_config.quiesce_wifi || needs_ble) {
@@ -2317,6 +2672,17 @@ void scenario_start() {
 }
 
 void scenario_end(uint8_t final_state, const char *why) {
+    g_candidate_active = false;
+    activation_cancel_io();
+    if (g_activation_work.load(std::memory_order_acquire) != WORK_IDLE) {
+        g_finish_pending = true;
+        g_finish_state = final_state;
+        if (why != nullptr && why != g_run_failure) {
+            snprintf(g_run_failure, sizeof(g_run_failure), "%s", why);
+        }
+        return; /* seal only after the worker has relinquished its resources */
+    }
+    g_finish_pending = false;
     g_capture_active = false;
     delay(30);  /* seal after the producer's current DMA read completes */
 
@@ -2341,7 +2707,7 @@ void scenario_end(uint8_t final_state, const char *why) {
     }
     g_run_ended_ms = millis();
     g_run_state = final_state;
-    if (why != nullptr) {
+    if (why != nullptr && why != g_run_failure) {
         snprintf(g_run_failure, sizeof(g_run_failure), "%s", why);
     }
     g_counters.samples_unscanned =
@@ -2407,7 +2773,7 @@ void scenario_end(uint8_t final_state, const char *why) {
         set_phase(PHASE_TEARDOWN);
         ble_stack_down();
     }
-    if (!g_wifi_up) {
+    if (!g_wifi_up && !g_ble_up) {
         wifi_up();
         http_begin();
         log_line("wifi restored; result available");
@@ -2419,13 +2785,15 @@ void scenario_end(uint8_t final_state, const char *why) {
 
 void scenario_tick() {
     if (static_cast<int32_t>(millis() - (g_run_started_ms + g_config.duration_ms)) >= 0) {
-        scenario_end(RUN_DONE, nullptr);
+        if (g_config.scenario == 6u || g_config.scenario == 7u) {
+            scenario_end(RUN_FAILED, "diagnostic deadline expired");
+        } else { scenario_end(RUN_DONE, nullptr); }
         return;
     }
 
     /* Scenario 3 is on Wi-Fi and scenarios 4-5 are BLE diagnostics; neither
        has any use for the microphone, and polling it would only cost time. */
-    if (g_config.scenario < 3u) { capture_pump(); }
+    if (g_config.scenario < 3u || g_config.scenario == 6u || g_config.scenario == 7u) { capture_pump(); }
 
     switch (g_config.scenario) {
         case 0: scenario_listen_tick(); break;
@@ -2434,6 +2802,8 @@ void scenario_tick() {
         case 3: scenario_ip_tick(); break;
         case 4: scenario_ble_diagnostic_tick(true); break;
         case 5: scenario_ble_diagnostic_tick(false); break;
+        case 6: scenario_retry_diagnostic_tick(); break;
+        case 7: scenario_central_diagnostic_tick(); break;
         default:
             scenario_end(RUN_FAILED, "unknown scenario");
             break;
@@ -2530,11 +2900,9 @@ void handle_serial_line(const String &line) {
     }
     if (line == "STOP") {
         if (g_run_state == RUN_RUNNING || g_run_state == RUN_ARMED) {
-            g_run_state = RUN_STOPPED;
-            g_run_ended_ms = millis();
-            log_line("stopped by control plane");
+            scenario_end(RUN_STOPPED, "stopped by control plane");
         }
-        Serial.println("MCLAUTO STOPPED");
+        Serial.println(g_finish_pending ? "MCLAUTO STOPPING" : "MCLAUTO STOPPED");
         return;
     }
     if (line == "STATUS") {
@@ -2639,6 +3007,52 @@ void setup() {
     Serial.begin(921600);
     const uint32_t waited = millis();
     while (!Serial && millis() - waited < 3000) { delay(10); }
+
+    g_log = static_cast<LogEntry *>(heap_caps_calloc(kLogEntries, sizeof(LogEntry),
+                                                   MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (g_log == nullptr) {
+        Serial.println("MCLAUTO FATAL PSRAM_LOG_UNAVAILABLE");
+        for (;;) { delay(1000); }
+    }
+    if (xTaskCreatePinnedToCore(activation_worker, "mcl-ble-activate", 4096,
+                               nullptr, 1, &g_activation_task, 1) != pdPASS) {
+        Serial.println("MCLAUTO FATAL BLE_WORKER_UNAVAILABLE");
+        for (;;) { delay(1000); }
+    }
+
+    bool address_ok = true;
+    for (uint8_t type : {static_cast<uint8_t>(BLE_ADDR_PUBLIC), static_cast<uint8_t>(BLE_ADDR_RANDOM)}) {
+        BLEAddress original(String("c1:23:45:67:89:ab"), type);
+        BLEAddress broken(original.getNative(), type); /* negative control */
+        BLEAddress restored = address_from_native(original.getNative(), type);
+        const bool pass = broken != original && restored == original &&
+            memcmp(restored.getNative(), original.getNative(), 6) == 0;
+        address_ok = address_ok && pass;
+        log_line("ADDRESS_SELFTEST %s type=%u original=%s old=%s", pass ? "PASS" : "FAIL",
+                 type, original.toString().c_str(), broken.toString().c_str());
+    }
+    if (!address_ok) {
+        Serial.println("MCLAUTO FATAL NATIVE_ADDRESS_ROUNDTRIP_FAILED");
+        for (;;) { delay(1000); }
+    }
+    uint8_t ad_test[27] = {25, MCL_BLE_AD_TYPE_SERVICE_DATA_128};
+    uint8_t beacon_test[MCL_RENDEZVOUS_BEACON_SIZE];
+    bool uuid_seen_test = false;
+    beacon_from_token(kDiagnosticToken, beacon_test);
+    memcpy(ad_test + 2, kServiceUuidLe, sizeof(kServiceUuidLe));
+    memcpy(ad_test + 18, beacon_test, sizeof(beacon_test));
+    bool ad_ok = advertisement_matches(ad_test, 26, beacon_test, &uuid_seen_test);
+    ad_ok = ad_ok && !advertisement_matches(ad_test, 25, beacon_test, &uuid_seen_test);
+    ad_test[0] = 26;
+    ad_ok = ad_ok && !advertisement_matches(ad_test, 27, beacon_test, &uuid_seen_test);
+    ad_test[0] = 25;
+    ad_test[18] ^= 1u;
+    ad_ok = ad_ok && !advertisement_matches(ad_test, 26, beacon_test, &uuid_seen_test);
+    log_line("BEACON_SELFTEST %s exact/truncated/overlong/wrong-token", ad_ok ? "PASS" : "FAIL");
+    if (!ad_ok) {
+        Serial.println("MCLAUTO FATAL BEACON_CONTRACT_FAILED");
+        for (;;) { delay(1000); }
+    }
 
     /* Randomised at boot: see the note at g_source_ref. */
     g_source_ref = esp_random();
@@ -2771,8 +3185,24 @@ void post_mortem_mark() {
 
 void loop() {
     post_mortem_mark();
+    activation_service();
+    if (g_phase == PHASE_REPORT && !g_wifi_up && !g_ble_up && !g_candidate_close_pending) {
+        wifi_up();
+        http_begin();
+        log_line("wifi restored after activation cleanup");
+    }
     serial_pump();
     if (g_wifi_up) { g_http.handleClient(); }
+    if (g_finish_pending) {
+        if (g_activation_work.load(std::memory_order_acquire) == WORK_IDLE) {
+            scenario_end(g_finish_state, g_run_failure);
+        } else {
+            capture_pump();
+            scenario_listen_tick();
+            delay(1);
+        }
+        return;
+    }
 
     switch (g_run_state) {
         case RUN_ARMED:

@@ -44,9 +44,9 @@ Two things stop that, and only the second is real:
    from the tags rather than asserting it. Someone who does not trust this
    README can check it from the log.
 
-`CONFIGURED` is a value this firmware never writes. It exists so that if a
-configuration path for one of these values is ever added, every run says so
-instead of silently becoming untrue.
+`CONFIGURED` is written by diagnostic scenarios 4-7, which deliberately use
+a fixed token (and, for fault injection, a fixed test address). Those runs
+report `zero_prior=false`. Scenario 2 learns its peer values from the air.
 
 ## Memory, which decided the design
 
@@ -99,7 +99,8 @@ same memory state whichever control plane armed it. The alternative -- "arm
 over serial for BLE runs and over HTTP for the rest" -- makes the result depend
 on the instrument, which is the class of mistake this rig exists to avoid.
 
-Measured on the shipping firmware, holding a live GATT connection:
+Historical peripheral-role component measurement, before the full facade and
+activation worker (not the current image resource envelope):
 
 ```
 static (link time)                 238 580 bytes, 72% of DRAM
@@ -291,8 +292,48 @@ Verified on hardware so far:
   directions but failed after one lost acceptance exposed a board-adapter
   lifecycle defect; the negative receipt and corrective image are retained in
   [`runs/20260909-android-dfr-zero-prior-attempt-01.md`](runs/20260909-android-dfr-zero-prior-attempt-01.md).
+- the corrected image then reached the exact Android BLE advertisement in two
+  zero-prior attempts, but its central connection was refused four times per
+  run. The repeated negative result and its resource-envelope boundary are
+  retained in
+  [`runs/20260909-android-dfr-zero-prior-attempts-02-03.md`](runs/20260909-android-dfr-zero-prior-attempts-02-03.md).
 
 Not established here, and not claimable until it is: a **complete zero-prior
 run** — acoustic first contact through BLE activation to `CONTACT_MIGRATED`
 — needs a second machine with a microphone, a speaker and a BLE radio. That is
 the second builder, not this board.
+
+## Activation correction and COM3 diagnostics (2026-09-09)
+
+Central connection/discovery/subscription run on a persistent worker. The main
+loop owns MCL and acoustic decoding; cancelled results cannot ready a later
+transaction, and stack teardown waits for the worker. The client is reused
+after failed connection and freed by BLE stack teardown. Scans always restart
+as bounded clearing slices. The cold 128-entry log ring now resides in PSRAM;
+the decoder window and scratch remain internal.
+
+The NimBLE `uint8_t[]` address constructor reverses native bytes. The adapter
+now uses `ble_addr_t`, preserving both the discovered bytes and address type.
+Boot tests exercise public/random address identity with the old constructor
+as a failing control, plus exact/truncated/overlong/wrong-token beacons.
+
+Additional laboratory scenarios:
+
+| Scenario | Purpose | Peer data | Success evidence |
+|---|---|---|---|
+| 6 | Two cancelled central attempts while listening to AP | Fixed diagnostic address/token, CONFIGURED | One client, stable settled heap within frozen 512-byte tolerance, zero capture drops |
+| 7 | Central connection and exact 40-byte GATT echo | Fixed diagnostic token, CONFIGURED; address discovered by BLE | Board verifies the exact three-fragment return |
+
+Scenario 5 remains **scan only**. It is not a central-connect test.
+
+```powershell
+.\node-serial.ps1 -Command 'CONFIG 6 20000 0 0 100 3 1' -Then ARM -Listen 25
+.\node-serial.ps1 -Command 'CONFIG 7 45000 0 0 100 3 1' -Then ARM -Listen 50
+```
+
+The library's NimBLE connection function ignores its public timeout argument.
+The main loop explicitly cancels at the operation/window deadline and remains
+serviceable while cleanup completes. `gap=-1` means no GAP status was observed;
+it is not a BLE error code. Cancellation return codes and raw heap snapshots
+are retained separately. Successful connection/discovery still needs a peer
+run; a diagnostic timeout or build alone cannot establish it.

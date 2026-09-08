@@ -30,11 +30,22 @@ The split, before you write anything:
 is claimable, and only **with a caveat**. `AP-BOOTSTRAP-1` and `BLE-ACTIVATE-1`
 are both **Candidate**: normatively complete and implementable from their text.
 The current DFR1154/Android campaign has exercised acoustic reception in both
-directions and BLE activation in both role orientations using independent
-platform stacks, but the complete zero-prior lifecycle and 3+ shared-air
+directions, board-peripheral/Android-central GATT carriage, and exact-token
+scanning in the reverse orientation. These use different platform stacks;
+reverse-role connection/carriage is not established by a scan. The complete
+zero-prior lifecycle and 3+ shared-air
 contention gate remain open. The caveat therefore travels
 in code as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, not only in prose. See
 §4 for what that means for your product.
+
+The corrected zero-prior campaign reached an exact air-learned BLE
+advertisement twice, then the DFR central failed to establish the connection in
+four attempts per run. Those retries allocated additional clients and were not
+independent repetitions. The adapter also reconstructed the discovered native
+BLE address in reverse byte order; the corrected image now tests address
+identity at boot and keeps activation off the MCL polling task. Prior
+board-peripheral GATT carriage remains valid component evidence; they do not convert this failed full-facade lifecycle into
+a migration pass.
 
 ## 1. How do I install MCL?
 
@@ -162,8 +173,9 @@ answer, and you receive one event. See [`QUICKSTART.md`](QUICKSTART.md) §06.
 `AP-BOOTSTRAP-1` and `BLE-ACTIVATE-1` remain Candidate because component-level
 bidirectional physical evidence is not the builder-interoperability acceptance
 test. The DFR1154 and Android implementations have exchanged acoustic bootstrap
-objects and activated BLE candidates in both role orientations using different
-platform stacks. What remains unproved is the complete zero-prior facade
+objects using different platform stacks. The retained Android-central GATT
+exchange establishes component carriage; the board-central record establishes
+scanning only. What remains unproved is the complete zero-prior facade
 lifecycle through migration and the 3+ shared-air contention variant. Until
 those pass, `MCL Stranger-Contact 1` is
 **not guaranteed** between builders who never coordinate — and the caveat

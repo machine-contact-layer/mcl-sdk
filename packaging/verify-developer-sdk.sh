@@ -12,6 +12,7 @@ SDK="$WORK/mcl-developer-sdk"
 PREFIX="$WORK/prefix"
 
 echo "=== single-package developer SDK verification ==="
+python3 -m unittest discover -s "$ROOT/mcl-sdk/packaging" -p 'test_*.py'
 "$ROOT/mcl-sdk/packaging/make-developer-sdk.sh" "$SDK"
 
 cmake -S "$SDK" -B "$WORK/build-sdk" \
@@ -22,6 +23,7 @@ cmake --build "$WORK/build-sdk" --config Release --target install -j 4 \
 
 echo "  one package configured, built and installed"
 ctest --test-dir "$WORK/build-sdk" --build-config Release --output-on-failure
+python3 "$ROOT/mcl-sdk/packaging/package-docs.py" "$SDK"
 
 if grep -RIEq '\.\./mcl-(core|wire|link|sdk|ap|ble|ip|uwb)/' \
         "$SDK/QUICKSTART.md" "$SDK/PORTING.md" "$SDK/BUILDER_GUIDE.md"; then

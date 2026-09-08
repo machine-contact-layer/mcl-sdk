@@ -1,0 +1,5 @@
+After final readback/reset, host HTTP requests timed out despite the board
+reporting Wi-Fi up. Windows Settings showed Wi-Fi 2 radio Off. Enabling
+that radio restored HTTP /api/status; final-wifi-status.json is the
+successful live response. A CLI adapter restart was denied and made
+no change. This observation does not establish why the radio was Off.
