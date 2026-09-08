@@ -109,12 +109,14 @@ advertising                         12 116 free    largest 7 668
 connection + a 3-fragment frame in and out         rc=0
 ```
 
-**PSRAM is not used.** The board has 8 MB and it is the obvious way out.
-Experiment 008 declined it for a reason that still holds: the correlation inner
-loop reads the window tens of millions of times per acquisition, and this
-project has never verified the QSPI/OPI mode option for this part. A rig that
-boots differently depending on a board option nobody checked is not an
-instrument.
+**PSRAM is used as an audio queue, not as decoder working memory.** OPI mode was
+verified on this exact module: the node reports 8,388,608 bytes and retained
+about 8.11 MB free at boot. A core-0 I2S producer writes a 131,072-sample SPSC
+queue there while the correlation window and scratch remain in internal DRAM.
+This separates continuous capture from variable positive-decode latency without
+putting the hot correlation working set behind PSRAM. The measured positive and
+quiet receipts are in
+[`runs/20260909-continuous-positive-receive.md`](runs/20260909-continuous-positive-receive.md).
 
 ## Phases
 

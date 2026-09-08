@@ -605,6 +605,16 @@ void listener_reset() {
     }
 }
 
+bool listener_prepare() {
+    const uint32_t started = millis();
+    const mcl_ap_modem_status_t st =
+        mcl_ap_modem_prepare(&g_listen_config.modem, scratch_ptr());
+    log_line("listener prepare rc=%ld ms=%lu",
+             static_cast<long>(st),
+             static_cast<unsigned long>(millis() - started));
+    return st == MCL_AP_MODEM_OK;
+}
+
 /*
  * Emit one payload acoustically.
  *
@@ -635,7 +645,9 @@ bool emit_payload(const uint8_t *payload, size_t len) {
     if (st != MCL_AP_MODEM_OK) {
         g_transmitting = false;
         log_line("emit refused: modulate rc=%ld", static_cast<long>(st));
+        mcl_ap_modem_scratch_invalidate(scratch_ptr());
         listener_reset();
+        (void)listener_prepare();
         return false;
     }
 
@@ -657,7 +669,12 @@ bool emit_payload(const uint8_t *payload, size_t len) {
     log_line("emitted %u bytes, %u samples", static_cast<unsigned>(len),
              static_cast<unsigned>(used));
 
+    /* The transmit waveform shares the union arena with the receive scratch.
+       Its first 38 KB overwrite the cached reference while leaving the cache
+       magic at the far end untouched, so the overlap must be made explicit. */
+    mcl_ap_modem_scratch_invalidate(scratch_ptr());
     listener_reset();
+    (void)listener_prepare();
     return true;
 }
 
@@ -701,6 +718,41 @@ uint32_t g_run_cap_samples = 0;
 uint16_t g_run_cap_peak = 0;
 uint32_t g_run_cap_mean = 0;
 
+/*
+ * AUDIO ACQUISITION IS A PRODUCER, DECODING IS A CONSUMER.
+ *
+ * A valid frame can send the portable decoder through its whole-frame timing
+ * retry for roughly a second on this MCU. Reading I2S from the same loop makes
+ * the microphone deaf for that second no matter how fast the quiet detector
+ * is. The board carries 8 MB of embedded OPI PSRAM, so a dedicated task keeps
+ * draining DMA into a 2.73 s SPSC queue while the internal-RAM modem works.
+ * PSRAM is used only for sequential captured PCM; the correlation reference,
+ * listener window and scratch remain in internal DRAM.
+ */
+constexpr size_t kCaptureRingSamples = 131072u;
+int16_t *g_capture_ring = nullptr;
+volatile uint32_t g_capture_write = 0;
+volatile uint32_t g_capture_read = 0;
+volatile uint32_t g_capture_dropped = 0;
+volatile bool g_capture_active = false;
+TaskHandle_t g_capture_task = nullptr;
+portMUX_TYPE g_capture_mux = portMUX_INITIALIZER_UNLOCKED;
+
+size_t capture_queued() {
+    size_t queued;
+    portENTER_CRITICAL(&g_capture_mux);
+    queued = static_cast<size_t>(g_capture_write - g_capture_read);
+    portEXIT_CRITICAL(&g_capture_mux);
+    return queued;
+}
+
+void capture_queue_reset() {
+    portENTER_CRITICAL(&g_capture_mux);
+    g_capture_read = g_capture_write;
+    g_capture_dropped = 0;
+    portEXIT_CRITICAL(&g_capture_mux);
+}
+
 void capture_level_reset() {
     g_read_ms_total = 0;
     g_read_ms_max = 0;
@@ -711,35 +763,90 @@ void capture_level_reset() {
     g_cap_samples = 0;
     g_cap_peak = 0;
     g_cap_abs_sum = 0;
+    capture_queue_reset();
+}
+
+void capture_task_main(void *) {
+    /* A task-local handoff block. The persistent queue lives in PSRAM. */
+    static int16_t block[1024];
+    for (;;) {
+        if (!g_capture_active || !g_microphone_ready || g_transmitting ||
+            g_capture_ring == nullptr) {
+            vTaskDelay(pdMS_TO_TICKS(1));
+            continue;
+        }
+
+        const uint32_t read_started = millis();
+        const int got = microphone.readBytes(reinterpret_cast<char *>(block),
+                                             static_cast<int>(sizeof(block)));
+        const uint32_t read_ms = millis() - read_started;
+        if (got <= 0) { continue; }
+        const size_t n = static_cast<size_t>(got) / sizeof(int16_t);
+
+        uint16_t block_peak = 0;
+        uint64_t block_sum = 0;
+        for (size_t i = 0; i < n; ++i) {
+            const int32_t v = block[i];
+            const uint32_t a = static_cast<uint32_t>((v < 0) ? -v : v);
+            if (a > block_peak) { block_peak = static_cast<uint16_t>(a); }
+            block_sum += a;
+        }
+
+        portENTER_CRITICAL(&g_capture_mux);
+        g_read_ms_total += read_ms;
+        if (read_ms > g_read_ms_max) { g_read_ms_max = read_ms; }
+        ++g_cap_blocks;
+        g_cap_samples += static_cast<uint32_t>(n);
+        if (block_peak > g_cap_peak) { g_cap_peak = block_peak; }
+        g_cap_abs_sum += block_sum;
+
+        size_t used = static_cast<size_t>(g_capture_write - g_capture_read);
+        if (used + n > kCaptureRingSamples) {
+            const size_t drop = used + n - kCaptureRingSamples;
+            g_capture_read += static_cast<uint32_t>(drop);
+            g_capture_dropped += static_cast<uint32_t>(drop);
+        }
+        size_t at = static_cast<size_t>(g_capture_write)
+                    & (kCaptureRingSamples - 1u);
+        const size_t first = (n < kCaptureRingSamples - at)
+                                 ? n : kCaptureRingSamples - at;
+        memcpy(g_capture_ring + at, block, first * sizeof(int16_t));
+        if (first < n) {
+            memcpy(g_capture_ring, block + first,
+                   (n - first) * sizeof(int16_t));
+        }
+        g_capture_write += static_cast<uint32_t>(n);
+        portEXIT_CRITICAL(&g_capture_mux);
+    }
 }
 
 void capture_pump() {
-    if (!g_microphone_ready || g_transmitting) { return; }
-
-    /* A small stack block. The window is the arena; this is only the handoff. */
+    if (g_capture_ring == nullptr) { return; }
     static int16_t block[1024];
-    const size_t want = sizeof(block);
-    const uint32_t read_started = millis();
-    const int got = microphone.readBytes(reinterpret_cast<char *>(block),
-                                         static_cast<int>(want));
-    const uint32_t read_ms = millis() - read_started;
-    g_read_ms_total += read_ms;
-    if (read_ms > g_read_ms_max) { g_read_ms_max = read_ms; }
-    if (got <= 0) { return; }
-    const size_t n = static_cast<size_t>(got) / sizeof(int16_t);
+    size_t n;
 
-    ++g_cap_blocks;
-    g_cap_samples += static_cast<uint32_t>(n);
-    for (size_t i = 0; i < n; ++i) {
-        /* -32768 has no positive counterpart in int16_t; widen before negating
-           or the absolute value of the loudest possible sample is negative. */
-        const int32_t v = block[i];
-        const uint32_t a = static_cast<uint32_t>((v < 0) ? -v : v);
-        if (a > g_cap_peak) { g_cap_peak = static_cast<uint16_t>(a); }
-        g_cap_abs_sum += a;
+    portENTER_CRITICAL(&g_capture_mux);
+    n = static_cast<size_t>(g_capture_write - g_capture_read);
+    if (n > sizeof(block) / sizeof(block[0])) {
+        n = sizeof(block) / sizeof(block[0]);
     }
+    if (n != 0u) {
+        const size_t at = static_cast<size_t>(g_capture_read)
+                          & (kCaptureRingSamples - 1u);
+        const size_t first = (n < kCaptureRingSamples - at)
+                                 ? n : kCaptureRingSamples - at;
+        memcpy(block, g_capture_ring + at, first * sizeof(int16_t));
+        if (first < n) {
+            memcpy(block + first, g_capture_ring,
+                   (n - first) * sizeof(int16_t));
+        }
+        g_capture_read += static_cast<uint32_t>(n);
+    }
+    portEXIT_CRITICAL(&g_capture_mux);
 
-    (void)mcl_ap_listen_push(&g_listener, block, n);
+    if (n != 0u) {
+        (void)mcl_ap_listen_push(&g_listener, block, n);
+    }
 }
 
 /* ============================================================ BLE
@@ -1527,37 +1634,26 @@ void machine_pump() {
  * of the stretch is overwritten before it is searched.
  */
 /*
- * 40 000 samples, and the ceiling is NOT the window capacity.
+ * 4 096 samples is 85 ms of audio. The ESP_I2S receive queue holds six 240
+ * sample DMA descriptors, or 30 ms. With the sparse 18/9 acquisition pass a
+ * cached poll over 4 096 new samples fits that backlog; a 40 000-sample poll
+ * took hundreds of milliseconds and made the microphone deaf while the main
+ * task searched. The reference is prepared before the timed run so its
+ * deterministic construction is never charged to the first DMA interval.
  *
- * A frame must fall entirely inside one contiguous stretch to be recovered,
- * so a longer batch sounds strictly better: at 300 baud and 160 samples a
- * symbol, a 10-byte PRESENCE spans about 25 000 samples with its preamble and
- * a 17-byte TRANSPORT_OFFER about 33 900, and a bigger batch leaves a large
- * object more room to start in.
- *
- * That reasoning was tried at 46 000, against a 47 360 window, and MEASURED
- * WORSE: recoveries fell from 4 to 0, captured audio more than halved, and
- * 24 960 samples were discarded unsearched. The window has to hold the batch
- * AND keep the scan position inside itself. Push a batch that nearly fills the
- * window and the oldest audio -- which is where the scan position still is --
- * is evicted before the search reaches it, so poll returns QUIET and the whole
- * batch is thrown away unexamined.
- *
- * So the batch is bounded by the window minus the room the scan position needs
- * behind it, not by the window. 40 000 leaves 7 360 samples of that room and
- * recovers frames; it is kept because it was measured, not because it is a
- * round number.
+ * A frame does not need to fit in one batch. `mcl_ap_listener_t` retains the
+ * trailing preamble and a pending acquisition across polls; the batch is only
+ * how often new candidate starts are searched.
  */
-constexpr size_t kPollBatchSamples = 40000;   /* 0.83 s, window holds 47360 */
+constexpr size_t kPollBatchSamples = 4096;   /* 85 ms; below one DMA backlog */
 uint64_t g_last_poll_pushed = 0;
 
 /*
  * True when enough new audio has arrived to be worth a search.
  *
- * A poll costs about 380 ms here and a read costs 21 ms, so polling after
- * every read means the microphone is unread 95% of the time and the audio
- * that does arrive is shredded into fragments far shorter than a frame.
- * Waiting fills the window with one continuous stretch instead.
+ * Polling every 1 024-sample read would pay the full-rate peak refinement four
+ * times per batch. Waiting for four reads amortises that fixed part while
+ * staying within the measured DMA/backlog budget.
  *
  * `pending` is the exception: the listener has already acquired a preamble and
  * is waiting for the body of that frame to arrive. That poll is pinned to a
@@ -1565,25 +1661,19 @@ uint64_t g_last_poll_pushed = 0;
  * and must not be delayed -- delaying it is how an acquired frame times out.
  */
 bool listen_should_poll() {
-    if (g_listener.pending != 0u) { return true; }
-    return (g_listener.total_pushed - g_last_poll_pushed) >= kPollBatchSamples;
+    const uint64_t fresh = g_listener.total_pushed - g_last_poll_pushed;
+    if (g_listener.pending != 0u) {
+        /* Pending work becomes decidable only when more body audio arrives.
+           Polling the same buffer in a tight loop produced 115k no-op calls
+           in one 22 s run and stole cycles without changing a verdict. */
+        return fresh != 0u;
+    }
+    return fresh >= kPollBatchSamples;
 }
 
-void scenario_listen_tick() {
-    mcl_ap_listen_event_t event;
-    uint8_t payload[kMaxBootstrapPayload];
-
-    if (!listen_should_poll()) { return; }
-    g_last_poll_pushed = g_listener.total_pushed;
-
-    const uint32_t poll_started = millis();
-    const mcl_ap_listen_result_t r =
-        mcl_ap_listen_poll(&g_listener, scratch_ptr(), payload, sizeof(payload), &event);
-    const uint32_t poll_ms = millis() - poll_started;
-    ++g_poll_calls;
-    g_poll_ms_total += poll_ms;
-    if (poll_ms > g_poll_ms_max) { g_poll_ms_max = poll_ms; }
-
+void account_listen_result(mcl_ap_listen_result_t r,
+                           const mcl_ap_listen_event_t &event,
+                           const uint8_t *payload) {
     switch (r) {
         case MCL_AP_LISTEN_CONTACT: {
             ++g_counters.frames_recovered;
@@ -1619,6 +1709,23 @@ void scenario_listen_tick() {
         default:
             break;
     }
+}
+
+void scenario_listen_tick() {
+    mcl_ap_listen_event_t event;
+    uint8_t payload[kMaxBootstrapPayload];
+
+    if (!listen_should_poll()) { return; }
+    g_last_poll_pushed = g_listener.total_pushed;
+
+    const uint32_t poll_started = millis();
+    const mcl_ap_listen_result_t r =
+        mcl_ap_listen_poll(&g_listener, scratch_ptr(), payload, sizeof(payload), &event);
+    const uint32_t poll_ms = millis() - poll_started;
+    ++g_poll_calls;
+    g_poll_ms_total += poll_ms;
+    if (poll_ms > g_poll_ms_max) { g_poll_ms_max = poll_ms; }
+    account_listen_result(r, event, payload);
 }
 
 /*
@@ -1686,8 +1793,12 @@ void scenario_rendezvous_tick() {
     if (g_phase == PHASE_RENDEZVOUS) {
         mcl_ap_listen_event_t event;
         uint8_t payload[kMaxBootstrapPayload];
-        const mcl_ap_listen_result_t r =
-            mcl_ap_listen_poll(&g_listener, scratch_ptr(), payload, sizeof(payload), &event);
+        mcl_ap_listen_result_t r = MCL_AP_LISTEN_QUIET;
+        if (listen_should_poll()) {
+            g_last_poll_pushed = g_listener.total_pushed;
+            r = mcl_ap_listen_poll(&g_listener, scratch_ptr(), payload,
+                                   sizeof(payload), &event);
+        }
 
         if (r == MCL_AP_LISTEN_CONTACT) {
             ++g_counters.frames_recovered;
@@ -2129,7 +2240,8 @@ void http_begin() {
 /* ------------------------------------------------------------ run control */
 
 void scenario_start() {
-    g_run_started_ms = millis();
+    g_capture_active = false;
+    delay(30);  /* let an in-flight I2S read finish before zeroing the receipt */
     g_run_ended_ms = 0;
     g_run_state = RUN_RUNNING;
     g_ble_role = BLE_ROLE_NONE;
@@ -2139,6 +2251,15 @@ void scenario_start() {
     tag_value("own_source_ref", g_source_ref, PROV_LOCAL);
 
     listener_reset();
+    if (!listener_prepare()) {
+        snprintf(g_run_failure, sizeof(g_run_failure),
+                 "modem reference preparation failed");
+        g_run_state = RUN_FAILED;
+        return;
+    }
+    /* The run interval starts only once the receiver can actually listen.
+       Deterministic reference construction is initialization, not deaf time. */
+    g_run_started_ms = millis();
     capture_level_reset();
     g_run_cap_blocks = 0;
     g_run_cap_samples = 0;
@@ -2146,6 +2267,7 @@ void scenario_start() {
     g_run_cap_mean = 0;
     g_last_poll_pushed = 0;
     schedule_next_announce();
+    g_capture_active = (g_config.scenario < 3u);
 
     g_diag_started = false;
     const bool needs_ble = (g_config.scenario == 4u || g_config.scenario == 5u ||
@@ -2182,13 +2304,36 @@ void scenario_start() {
 }
 
 void scenario_end(uint8_t final_state, const char *why) {
+    g_capture_active = false;
+    delay(30);  /* seal after the producer's current DMA read completes */
+
+    /* The producer owns the time boundary. Drain every sample it accepted
+       before sealing; otherwise a frame received at the end of the run could
+       be reported as silence merely because it was still queued. */
+    while (capture_queued() != 0u) { capture_pump(); }
+    if (g_config.scenario == 0u || g_config.scenario == 1u) {
+        mcl_ap_listen_result_t r;
+        mcl_ap_listen_event_t event;
+        uint8_t payload[kMaxBootstrapPayload];
+        do {
+            const uint32_t poll_started = millis();
+            r = mcl_ap_listen_flush(&g_listener, scratch_ptr(), payload,
+                                    sizeof(payload), &event);
+            const uint32_t poll_ms = millis() - poll_started;
+            ++g_poll_calls;
+            g_poll_ms_total += poll_ms;
+            if (poll_ms > g_poll_ms_max) { g_poll_ms_max = poll_ms; }
+            account_listen_result(r, event, payload);
+        } while (r == MCL_AP_LISTEN_CONTACT || r == MCL_AP_LISTEN_HEARD);
+    }
     g_run_ended_ms = millis();
     g_run_state = final_state;
     if (why != nullptr) {
         snprintf(g_run_failure, sizeof(g_run_failure), "%s", why);
     }
     g_counters.samples_unscanned =
-        static_cast<uint32_t>(g_listener.samples_unscanned);
+        static_cast<uint32_t>(g_listener.samples_unscanned)
+        + g_capture_dropped;
     g_run_cap_blocks = g_cap_blocks;
     g_run_cap_samples = g_cap_samples;
     g_run_cap_peak = g_cap_peak;
@@ -2220,11 +2365,12 @@ void scenario_end(uint8_t final_state, const char *why) {
              static_cast<unsigned long>(g_cap_peak),
              static_cast<unsigned long>(g_cap_samples ?
                  (g_cap_abs_sum / g_cap_samples) : 0u));
-    log_line("run end pushed=%lu searched=%lu unscanned=%lu ref_len=%lu",
+    log_line("run end pushed=%lu searched=%lu unscanned=%lu queue=%lu/%lu",
              static_cast<unsigned long>(g_listener.total_pushed),
              static_cast<unsigned long>(g_listener.samples_searched),
-             static_cast<unsigned long>(g_listener.samples_unscanned),
-             static_cast<unsigned long>(g_listener.ref_len));
+             static_cast<unsigned long>(g_counters.samples_unscanned),
+             static_cast<unsigned long>(capture_queued()),
+             static_cast<unsigned long>(g_capture_dropped));
     log_line("run end read_ms=%lu/%lu poll_ms=%lu/%lu polls=%lu",
              static_cast<unsigned long>(g_read_ms_total),
              static_cast<unsigned long>(g_read_ms_max),
@@ -2253,6 +2399,8 @@ void scenario_end(uint8_t final_state, const char *why) {
         http_begin();
         log_line("wifi restored; result available");
     }
+    capture_queue_reset();
+    g_capture_active = true;
     set_phase(PHASE_REPORT);
 }
 
@@ -2378,11 +2526,16 @@ void handle_serial_line(const String &line) {
     }
     if (line == "STATUS") {
         Serial.printf("MCLAUTO STATUS state=%s phase=%s scenario=%u free_heap=%lu "
-                      "largest=%lu wifi=%u ble=%u role=%s source_ref=%lu\n",
+                      "largest=%lu psram=%lu/%lu queue=%u/%lu wifi=%u ble=%u "
+                      "role=%s source_ref=%lu\n",
                       run_state_name(g_run_state), phase_name(g_phase),
                       static_cast<unsigned>(g_config.scenario),
                       static_cast<unsigned long>(ESP.getFreeHeap()),
                       static_cast<unsigned long>(ESP.getMaxAllocHeap()),
+                      static_cast<unsigned long>(ESP.getFreePsram()),
+                      static_cast<unsigned long>(ESP.getPsramSize()),
+                      static_cast<unsigned>(capture_queued()),
+                      static_cast<unsigned long>(g_capture_dropped),
                       static_cast<unsigned>(g_wifi_up ? 1 : 0),
                       static_cast<unsigned>(g_ble_up ? 1 : 0),
                       ble_role_name(g_ble_role),
@@ -2483,6 +2636,24 @@ void setup() {
                                           I2S_SLOT_MODE_MONO);
     if (!g_microphone_ready) { Serial.println("MCLAUTO WARN PDM_INIT_FAILED"); }
 
+    if (ESP.getPsramSize() != 0u) {
+        g_capture_ring = static_cast<int16_t *>(
+            ps_malloc(kCaptureRingSamples * sizeof(int16_t)));
+    }
+    if (g_capture_ring == nullptr) {
+        Serial.println("MCLAUTO FATAL PSRAM_CAPTURE_QUEUE_UNAVAILABLE");
+    } else {
+        const BaseType_t task_ok =
+            xTaskCreatePinnedToCore(capture_task_main, "mcl-audio-capture",
+                                    4096, nullptr, 3, &g_capture_task, 0);
+        if (task_ok != pdPASS) {
+            g_capture_ring = nullptr;
+            Serial.println("MCLAUTO FATAL CAPTURE_TASK_CREATE_FAILED");
+        } else {
+            g_capture_active = true;
+        }
+    }
+
     speaker.setPins(kAmpBclkPin, kAmpLrclkPin, kAmpDataPin);
     g_speaker_ready = speaker.begin(I2S_MODE_STD, kSampleRateHz,
                                     I2S_DATA_BIT_WIDTH_16BIT,
@@ -2544,7 +2715,7 @@ void setup() {
     }
 
     Serial.printf("MCLAUTO READY wire_major=%u link_major=%u arena=%u window=%u "
-                  "scratch=%u min_window=%u free_heap=%lu source_ref=%lu\n",
+                  "scratch=%u min_window=%u free_heap=%lu psram=%lu/%lu source_ref=%lu\n",
                   static_cast<unsigned>(MCL_WIRE_STABLE_MAJOR),
                   static_cast<unsigned>(MCL_LINK_STABLE_MAJOR),
                   static_cast<unsigned>(kArenaBytes),
@@ -2552,6 +2723,8 @@ void setup() {
                   static_cast<unsigned>(sizeof(mcl_ap_modem_scratch_t)),
                   static_cast<unsigned>(need),
                   static_cast<unsigned long>(ESP.getFreeHeap()),
+                  static_cast<unsigned long>(ESP.getFreePsram()),
+                  static_cast<unsigned long>(ESP.getPsramSize()),
                   static_cast<unsigned long>(g_source_ref));
 
     if (armed_on_boot) {

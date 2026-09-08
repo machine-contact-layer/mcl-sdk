@@ -46,10 +46,11 @@ $IpDir     = Join-Path $Root 'mcl-ip'
 # native USB CDC/JTAG the board enumerates as (VID 303A, PID 1001), and every
 # line this firmware prints would go to pins nobody is reading.
 #
-# PSRAM is deliberately left at its default (disabled). The sketch header says
-# why: the correlation working set stays in internal DRAM, and this project has
-# never verified the QSPI/OPI mode option for this part.
-$fqbn = 'esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB'
+# OPI PSRAM is verified on this exact ESP32-S3 module and holds only the audio
+# producer queue. The correlation window and scratch stay in internal DRAM;
+# moving their hot inner-loop working set to PSRAM would change the measured
+# decoder cost. See runs/20260909-continuous-positive-receive.md.
+$fqbn = 'esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi'
 
 $Backup = Join-Path $env:USERPROFILE 'Downloads\MCL_DFR1154_BACKUP_20260902\dfr1154-factory-app-before-mcl.bin'
 
