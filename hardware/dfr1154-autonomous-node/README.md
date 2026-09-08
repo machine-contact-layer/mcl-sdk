@@ -135,6 +135,12 @@ TEARDOWN    radios down.
 REPORT      Wi-Fi + HTTP restored, result readable.
 ```
 
+`ACTIVATE` does not immediately retire the bootstrap receiver. Until the
+candidate has actually carried traffic, a lost acoustic `TRANSPORT_ACCEPT`
+must still recover: the offerer repeats the same `TRANSPORT_OFFER`, and the
+acceptor hears it and re-emits the stored acceptance. AP listening therefore
+remains live through `ACTIVATE` and stands down only at validation/policy.
+
 ## Roles are read off the wire
 
 `BLE-ACTIVATE-1` section 2, implemented literally. Only `TRANSPORT_OFFER`
@@ -281,6 +287,10 @@ Verified on hardware so far:
   [`mcl-ble/hardware/host-ble-probe/`](../../../mcl-ble/hardware/host-ble-probe/);
 - a 40-byte frame crosses the GATT link as three fragments at the 23-byte
   minimum MTU, in both directions, byte-identical.
+- the first Android/DFR zero-prior attempt proved acoustic reception in both
+  directions but failed after one lost acceptance exposed a board-adapter
+  lifecycle defect; the negative receipt and corrective image are retained in
+  [`runs/20260909-android-dfr-zero-prior-attempt-01.md`](runs/20260909-android-dfr-zero-prior-attempt-01.md).
 
 Not established here, and not claimable until it is: a **complete zero-prior
 run** — acoustic first contact through BLE activation to `CONTACT_MIGRATED`

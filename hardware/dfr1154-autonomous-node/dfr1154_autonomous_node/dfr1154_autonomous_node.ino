@@ -1788,9 +1788,22 @@ void scenario_announce_tick() {
  * itself: open a bearer and decide whether to admit a stranger.
  */
 void scenario_rendezvous_tick() {
-    /* The acoustic half is only live until the candidate opens. Afterwards the
-       arena's window is stale and the microphone is not the medium any more. */
-    if (g_phase == PHASE_RENDEZVOUS) {
+    /*
+     * KEEP THE BOOTSTRAP MEDIUM LIVE UNTIL THE CANDIDATE IS USABLE.
+     *
+     * Opening a BLE candidate is not proof that the peer heard our acoustic
+     * TRANSPORT_ACCEPT.  If that frame was lost, the offerer retransmits the
+     * same TRANSPORT_OFFER and the coordinator answers it idempotently with the
+     * stored acceptance.  Stopping AP here as soon as scanning began made that
+     * recovery rule unreachable on the real board: the microphone continued
+     * filling the capture queue, but none of those samples were decoded.
+     *
+     * The listener arena is not owned by BLE.  Acoustic transmission already
+     * invalidates and rebuilds the overlapped modem scratch in emit_payload(),
+     * so it remains valid through ACTIVATE.  Once validation/policy begins the
+     * candidate has actually carried traffic and AP can stand down.
+     */
+    if (g_phase == PHASE_RENDEZVOUS || g_phase == PHASE_ACTIVATE) {
         mcl_ap_listen_event_t event;
         uint8_t payload[kMaxBootstrapPayload];
         mcl_ap_listen_result_t r = MCL_AP_LISTEN_QUIET;
