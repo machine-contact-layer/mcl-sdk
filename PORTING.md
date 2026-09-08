@@ -29,7 +29,8 @@ a 10 ms service cadence.
 
 `candidate_open` must not block while a BLE scan, connection, or socket setup
 runs. Return `MCL_MACHINE_CANDIDATE_PENDING`, perform the work asynchronously,
-then call `mcl_machine_candidate_ready()` once the bearer can carry bytes.
+then call `mcl_machine_candidate_ready()` once the bearer can carry bytes or
+`mcl_machine_candidate_refused()` if opening later fails.
 
 Incoming bytes from every bearer go to `mcl_machine_receive()`. The transport
 adapter retains ownership of its receive buffer after the call returns.

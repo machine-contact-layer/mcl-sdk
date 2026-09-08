@@ -340,6 +340,7 @@ static mcl_machine_status_t open_candidate(mcl_machine_t *machine,
     case MCL_MACHINE_CANDIDATE_REFUSED:
     default:
         machine->awaiting_candidate = 0u;
+        (void)mcl_rdv_candidate_refused(&machine->rdv);
         return MCL_MACHINE_ERR_STATE;
     }
 }
@@ -356,6 +357,13 @@ mcl_machine_status_t mcl_machine_poll(mcl_machine_t *machine,
     }
     if (machine->started == 0u) {
         return MCL_MACHINE_ERR_STATE;
+    }
+
+    if (machine->pending_platform_error != 0u) {
+        machine->pending_platform_error = 0u;
+        emit(out, MCL_MACHINE_EVENT_ERROR, NULL);
+        out->status = MCL_MACHINE_ERR_STATE;
+        return MCL_MACHINE_OK;
     }
 
     memset(&ev, 0, sizeof(ev));
@@ -509,6 +517,28 @@ mcl_machine_status_t mcl_machine_candidate_ready(mcl_machine_t *machine)
         machine->candidate_open_transport = 0u;
         return MCL_MACHINE_ERR_STATE;
     }
+    return MCL_MACHINE_OK;
+}
+
+mcl_machine_status_t mcl_machine_candidate_refused(mcl_machine_t *machine)
+{
+    if (machine == NULL) {
+        return MCL_MACHINE_ERR_NULL;
+    }
+    if (machine->awaiting_candidate == 0u) {
+        return MCL_MACHINE_ERR_STATE;
+    }
+    machine->awaiting_candidate = 0u;
+    if (machine->platform.candidate_close != NULL &&
+        machine->candidate_open_transport != 0u) {
+        machine->platform.candidate_close(machine->platform.user,
+                                          machine->candidate_open_transport);
+    }
+    machine->candidate_open_transport = 0u;
+    if (mcl_rdv_candidate_refused(&machine->rdv) != MCL_RDV_OK) {
+        return MCL_MACHINE_ERR_STATE;
+    }
+    machine->pending_platform_error = 1u;
     return MCL_MACHINE_OK;
 }
 

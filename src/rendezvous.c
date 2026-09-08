@@ -1351,6 +1351,19 @@ mcl_rdv_status_t mcl_rdv_candidate_ready(mcl_rdv_t *rdv)
     return begin_validation(rdv, now_of(rdv));
 }
 
+mcl_rdv_status_t mcl_rdv_candidate_refused(mcl_rdv_t *rdv)
+{
+    if (rdv == NULL) {
+        return MCL_RDV_ERR_NULL;
+    }
+    if (rdv->state != MCL_RDV_STATE_AGREED &&
+        rdv->state != MCL_RDV_STATE_CANDIDATE_PENDING) {
+        return MCL_RDV_ERR_STATE;
+    }
+    abandon_epoch(rdv, now_of(rdv));
+    return MCL_RDV_OK;
+}
+
 mcl_rdv_status_t mcl_rdv_admit(mcl_rdv_t *rdv)
 {
     if (rdv == NULL) {

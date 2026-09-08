@@ -185,7 +185,9 @@ the peer holding the token scans. That is
 [`BLE-ACTIVATE-1`](../mcl-ble/spec/ble-activate-1.md) §2, arriving as data.
 
 **`candidate_open` may answer `PENDING`.** Opening a bearer is not instantaneous
-anywhere real. Answer `PENDING`, then call `mcl_machine_candidate_ready()`.
+anywhere real. Answer `PENDING`, then call `mcl_machine_candidate_ready()` on
+success or `mcl_machine_candidate_refused()` when the asynchronous attempt
+fails.
 Nothing is emitted on the bearer before that call.
 
 ## 07 Run the conformance tests

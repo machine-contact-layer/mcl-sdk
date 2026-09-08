@@ -136,7 +136,7 @@ typedef struct {
  */
 typedef enum {
     MCL_MACHINE_CANDIDATE_READY = 0,    /* usable now */
-    MCL_MACHINE_CANDIDATE_PENDING = 1,  /* opening; call mcl_machine_candidate_ready() */
+    MCL_MACHINE_CANDIDATE_PENDING = 1,  /* opening; later report ready/refused */
     MCL_MACHINE_CANDIDATE_REFUSED = 2   /* cannot be opened at all */
 } mcl_machine_candidate_t;
 
@@ -214,8 +214,9 @@ typedef struct {
      * `local_endpoint_token` is this machine's own token for the transaction,
      * or zero if none was minted -- what a BLE offerer must advertise.
      *
-     * Return PENDING and call mcl_machine_candidate_ready() when the bearer is
-     * up; nothing is emitted on it before that call.
+     * Return PENDING and later call mcl_machine_candidate_ready() when the
+     * bearer is up or mcl_machine_candidate_refused() if asynchronous opening
+     * fails; nothing is emitted on it before one of those calls.
      */
     mcl_machine_candidate_t (*candidate_open)(void *user,
                                               uint8_t transport_id,
@@ -306,6 +307,7 @@ typedef struct {
     uint8_t started;
     uint8_t candidate_open_transport;
     uint8_t awaiting_candidate;
+    uint8_t pending_platform_error;
 } mcl_machine_t;
 
 /*
@@ -346,6 +348,8 @@ mcl_machine_status_t mcl_machine_receive(mcl_machine_t *machine,
 
 /* The bearer `candidate_open` reported PENDING for is now usable. */
 mcl_machine_status_t mcl_machine_candidate_ready(mcl_machine_t *machine);
+/* A candidate_open() that returned PENDING later failed. */
+mcl_machine_status_t mcl_machine_candidate_refused(mcl_machine_t *machine);
 
 /* Answers to MCL_MACHINE_EVENT_POLICY_REQUIRED. */
 mcl_machine_status_t mcl_machine_admit(mcl_machine_t *machine);

@@ -683,6 +683,8 @@ mcl_rdv_status_t mcl_rdv_poll(mcl_rdv_t *rdv, mcl_rdv_event_t *out);
  * MCL_RDV_ERR_STATE if there is no candidate waiting.
  */
 mcl_rdv_status_t mcl_rdv_candidate_ready(mcl_rdv_t *rdv);
+/* A candidate previously reported as pending failed to open. */
+mcl_rdv_status_t mcl_rdv_candidate_refused(mcl_rdv_t *rdv);
 
 /*
  * Local policy has admitted this peer. Proceed.

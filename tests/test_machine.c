@@ -72,6 +72,7 @@ typedef struct room_s {
     /* Make candidate_open answer PENDING, so the deferred path is exercised
        rather than only the easy one. */
     int pending_open;
+    int refuse_pending_open;
     int refuse_open;
     int refuse_policy;
     /* Deliver only this many candidate frames, then destroy the rest while
@@ -250,7 +251,11 @@ static void tick(uint32_t step_ms, mcl_machine_event_t *events)
         if (g_room.pending_open && g_room.opens[i] > 0u) {
             /* The integrator's bearer is up now. Idempotent by construction:
                a second call is refused, and the test relies on that. */
-            (void)mcl_machine_candidate_ready(&g_machines[i]);
+            if (g_room.refuse_pending_open) {
+                (void)mcl_machine_candidate_refused(&g_machines[i]);
+            } else {
+                (void)mcl_machine_candidate_ready(&g_machines[i]);
+            }
         }
     }
     room_advance(step_ms);
@@ -468,6 +473,46 @@ static void test_pending_candidate(void)
           "CANDIDATE_PENDING then mcl_machine_candidate_ready() reaches a contact");
 }
 
+static void test_pending_candidate_refused(void)
+{
+    mcl_machine_config_t ca, cb;
+    mcl_platform_t pa, pb;
+    mcl_machine_event_t ev[MAX_NODES];
+    unsigned i;
+    int errored = 0, established = 0;
+
+    printf("[machine] an asynchronous candidate refusal is reportable\n");
+    room_reset();
+    g_room.pending_open = 1;
+    g_room.refuse_pending_open = 1;
+    g_node_count = 2u;
+    base_platform(&pa, &g_peers[0], 1);
+    base_platform(&pb, &g_peers[1], 1);
+    (void)mcl_machine_config_deployment(&ca, MCL_DEPLOYMENT_REFERENCE_1,
+                                        0x71717171u, MCL_CONTACT_ROLE_INITIATOR);
+    (void)mcl_machine_config_deployment(&cb, MCL_DEPLOYMENT_REFERENCE_1,
+                                        0x81818181u, MCL_CONTACT_ROLE_RESPONDER);
+    (void)mcl_machine_init(&g_machines[0], &ca, &pa);
+    (void)mcl_machine_init(&g_machines[1], &cb, &pb);
+    (void)mcl_machine_start(&g_machines[0]);
+    (void)mcl_machine_start(&g_machines[1]);
+    for (i = 0u; i < 3000u; ++i) {
+        tick(10u, ev);
+        if (ev[0].kind == MCL_MACHINE_EVENT_ERROR ||
+            ev[1].kind == MCL_MACHINE_EVENT_ERROR) {
+            errored = 1;
+        }
+        if (ev[0].kind == MCL_MACHINE_EVENT_CONTACT_ESTABLISHED ||
+            ev[1].kind == MCL_MACHINE_EVENT_CONTACT_ESTABLISHED) {
+            established = 1;
+        }
+    }
+    check(errored, "a later open failure reaches the application as ERROR");
+    check(!established, "and no contact is claimed after async refusal");
+    check(g_room.closes[0] + g_room.closes[1] > 0u,
+          "the failed pending candidate is closed exactly through the facade");
+}
+
 static void test_policy_callback_and_refusal(void)
 {
     int a = 0, b = 0, policy = 0;
@@ -681,6 +726,7 @@ int main(void)
     test_platform_refusals();
     test_two_strangers();
     test_pending_candidate();
+    test_pending_candidate_refused();
     test_policy_callback_and_refusal();
     test_no_common_bearer();
     test_candidate_refused();
