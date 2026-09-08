@@ -21,6 +21,23 @@ cmake --build "$WORK/build-sdk" --config Release --target install -j 4 \
     > "$WORK/build.log" 2>&1
 
 echo "  one package configured, built and installed"
+ctest --test-dir "$WORK/build-sdk" --build-config Release --output-on-failure
+
+if grep -Eq ']\(\.\./mcl-(core|wire|link|sdk|ap|ble|ip|uwb)/' \
+        "$SDK/QUICKSTART.md"; then
+    echo "FAILED: packaged Quickstart contains a sibling-repository link"
+    exit 1
+fi
+for required in \
+    "$SDK/BUILDER_GUIDE.md" \
+    "$SDK/docs/SECURITY.md" \
+    "$SDK/docs/ap-bootstrap-1.md" \
+    "$SDK/docs/ble-activate-1.md" \
+    "$SDK/docs/ble-gatt-profile-v1.md" \
+    "$SDK/profiles/MCL-REFERENCE-DEPLOYMENT-1.json"
+do
+    [ -f "$required" ] || { echo "FAILED: package missing $required"; exit 1; }
+done
 
 RESOURCE_EXE=
 for candidate in \

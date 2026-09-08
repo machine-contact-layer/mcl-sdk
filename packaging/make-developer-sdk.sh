@@ -17,7 +17,8 @@ if [ -e "$OUT" ]; then
     exit 2
 fi
 
-mkdir -p "$OUT/include/mcl" "$OUT/src" "$OUT/examples" "$OUT/cmake"
+mkdir -p "$OUT/include/mcl" "$OUT/src" "$OUT/examples" "$OUT/cmake" \
+    "$OUT/tests" "$OUT/docs" "$OUT/profiles"
 
 for repo in mcl-wire mcl-link mcl-sdk mcl-ap mcl-ble mcl-ip; do
     if [ ! -d "$ROOT/$repo" ]; then
@@ -61,9 +62,22 @@ done
 
 cp "$ROOT/mcl-sdk/examples/first_contact.c" "$OUT/examples/"
 cp "$ROOT/mcl-sdk/examples/resource_report.c" "$OUT/examples/"
-cp "$ROOT/mcl-sdk/QUICKSTART.md" "$OUT/"
+cp "$ROOT/mcl-sdk/tests/test_machine.c" "$OUT/tests/"
+sed \
+    -e 's|../mcl-core/SECURITY.md|docs/SECURITY.md|g' \
+    -e 's|../mcl-ble/spec/ble-activate-1.md|docs/ble-activate-1.md|g' \
+    -e 's|../mcl-core/deployments/MCL-REFERENCE-DEPLOYMENT-1.json|profiles/MCL-REFERENCE-DEPLOYMENT-1.json|g' \
+    -e 's|../mcl-ble/hardware/host-ble-probe/|https://github.com/machine-contact-layer/mcl-ble/tree/main/hardware/host-ble-probe/|g' \
+    -e 's|../mcl-core/conformance/|https://github.com/machine-contact-layer/mcl-core/tree/main/conformance/|g' \
+    "$ROOT/mcl-sdk/QUICKSTART.md" > "$OUT/QUICKSTART.md"
 cp "$ROOT/mcl-sdk/PORTING.md" "$OUT/"
 cp "$ROOT/mcl-sdk/RESOURCE_ENVELOPE.md" "$OUT/"
+cp "$ROOT/mcl-sdk/BUILDER_GUIDE.md" "$OUT/"
+cp "$ROOT/mcl-core/SECURITY.md" "$OUT/docs/"
+cp "$ROOT/mcl-ap/spec/ap-bootstrap-1.md" "$OUT/docs/"
+cp "$ROOT/mcl-ble/spec/ble-activate-1.md" "$OUT/docs/"
+cp "$ROOT/mcl-ble/spec/ble-gatt-profile-v1.md" "$OUT/docs/"
+cp "$ROOT/mcl-core/deployments/MCL-REFERENCE-DEPLOYMENT-1.json" "$OUT/profiles/"
 cp "$ROOT/mcl-sdk/LICENSE" "$OUT/"
 cp "$ROOT/mcl-sdk/NOTICE" "$OUT/"
 cp "$ROOT/mcl-sdk/packaging/developer-sdk/CMakeLists.txt" "$OUT/CMakeLists.txt"

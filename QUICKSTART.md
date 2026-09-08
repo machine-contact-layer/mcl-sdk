@@ -94,7 +94,7 @@ target_link_libraries(my_machine PRIVATE mcl::mcl_sdk)
 ## 04 Run two machines
 
 ```sh
-./build/mcl_sdk_first_contact
+./build/mcl_first_contact
 ```
 
 ```text
@@ -192,10 +192,16 @@ Nothing is emitted on the bearer before that call.
 
 ## 07 Run the conformance tests
 
-You do not have to trust this repository's CI. Everything runs locally:
+You do not have to trust this repository's CI. The release developer package
+ships its machine-contract test and runs it locally:
 
 ```sh
-ctest --test-dir build --output-on-failure     # this repository
+ctest --test-dir build --output-on-failure
+```
+
+Maintainers working from all eight source repositories additionally run:
+
+```sh
 sh ../mcl-core/tools/local-gates.sh            # all eight, GCC + Clang + sanitizers
 sh ../mcl-core/tools/check-reference-deployment.sh
 sh ../mcl-ap/conformance/check-vectors.sh      # two receivers, one corpus

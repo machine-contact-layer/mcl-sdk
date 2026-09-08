@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(mcl_developer_sdk VERSION 1.0.0 LANGUAGES C)
 
 option(MCL_DEVELOPER_SDK_BUILD_EXAMPLE "Build the first-contact example" ON)
+option(MCL_DEVELOPER_SDK_BUILD_TESTS "Build the machine contract test" ON)
 
 add_library(mcl_sdk STATIC
     src/wire.c
@@ -32,6 +33,17 @@ if(MSVC)
     target_compile_options(mcl_sdk PRIVATE /W4 /WX)
 else()
     target_compile_options(mcl_sdk PRIVATE -Wall -Wextra -Werror -pedantic)
+endif()
+
+if(MCL_DEVELOPER_SDK_BUILD_TESTS)
+    enable_testing()
+    add_executable(mcl_machine_contract tests/test_machine.c)
+    target_link_libraries(mcl_machine_contract PRIVATE mcl_sdk)
+    set_target_properties(mcl_machine_contract PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+    add_test(NAME mcl_machine_contract COMMAND mcl_machine_contract)
 endif()
 if(NOT WIN32)
     target_link_libraries(mcl_sdk PUBLIC m)
