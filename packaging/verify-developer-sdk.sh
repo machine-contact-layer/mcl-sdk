@@ -23,14 +23,21 @@ cmake --build "$WORK/build-sdk" --config Release --target install -j 4 \
 echo "  one package configured, built and installed"
 ctest --test-dir "$WORK/build-sdk" --build-config Release --output-on-failure
 
-if grep -Eq ']\(\.\./mcl-(core|wire|link|sdk|ap|ble|ip|uwb)/' \
-        "$SDK/QUICKSTART.md"; then
-    echo "FAILED: packaged Quickstart contains a sibling-repository link"
+if grep -RIEq '\.\./mcl-(core|wire|link|sdk|ap|ble|ip|uwb)/' \
+        "$SDK/QUICKSTART.md" "$SDK/PORTING.md" "$SDK/BUILDER_GUIDE.md"; then
+    echo "FAILED: packaged documentation contains a source-repository path"
     exit 1
 fi
 for required in \
     "$SDK/BUILDER_GUIDE.md" \
     "$SDK/docs/SECURITY.md" \
+    "$SDK/docs/REPORTING.md" \
+    "$SDK/docs/SPECIFICATION_INDEX.md" \
+    "$SDK/docs/V1_SCOPE.md" \
+    "$SDK/docs/conformance-profiles-v1.md" \
+    "$SDK/docs/deployment-profile-v1.md" \
+    "$SDK/docs/SPEC_GAPS.md" \
+    "$SDK/docs/TWO_BUILDER_AUDIT.md" \
     "$SDK/docs/ap-bootstrap-1.md" \
     "$SDK/docs/ble-activate-1.md" \
     "$SDK/docs/ble-gatt-profile-v1.md" \
@@ -38,6 +45,26 @@ for required in \
 do
     [ -f "$required" ] || { echo "FAILED: package missing $required"; exit 1; }
 done
+
+for doc in "$SDK/QUICKSTART.md" "$SDK/PORTING.md" "$SDK/BUILDER_GUIDE.md"; do
+    grep -Eo ']\([^)]*\)' "$doc" | sed -e 's/^](//' -e 's/)$//' |
+        while IFS= read -r target; do
+            case "$target" in
+                ''|'#'*|http://*|https://*|mailto:*) continue ;;
+            esac
+            target=${target%%#*}
+            [ -e "$(dirname "$doc")/$target" ] || {
+                echo "FAILED: packaged Markdown link does not resolve: $(basename "$doc") -> $target"
+                exit 1
+            }
+        done
+done
+
+if grep -Eq 'mcl-sdk/packaging/|\.\./mcl-(core|wire|link|sdk|ap|ble|ip|uwb)/' \
+        "$SDK/QUICKSTART.md" "$SDK/BUILDER_GUIDE.md"; then
+    echo "FAILED: packaged documentation contains a source-tree-only command"
+    exit 1
+fi
 
 RESOURCE_EXE=
 for candidate in \

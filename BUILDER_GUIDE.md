@@ -28,9 +28,11 @@ The split, before you write anything:
 
 **Read this before designing anything around acoustic:** `MCL Stranger-Contact 1`
 is claimable, and only **with a caveat**. `AP-BOOTSTRAP-1` and `BLE-ACTIVATE-1`
-are both **Candidate**: normatively complete and implementable from their text,
-but one has been measured from a single transmitter class and the other has
-never been exercised between two independent implementations. The caveat travels
+are both **Candidate**: normatively complete and implementable from their text.
+The current DFR1154/Android campaign has exercised acoustic reception in both
+directions and BLE activation in both role orientations using independent
+platform stacks, but the complete zero-prior lifecycle and 3+ shared-air
+contention gate remain open. The caveat therefore travels
 in code as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, not only in prose. See
 §4 for what that means for your product.
 
@@ -157,10 +159,13 @@ answer, and you receive one event. See [`QUICKSTART.md`](QUICKSTART.md) §06.
 
 **Both profiles are Candidate, not Stable, and the reason is not a formality.**
 
-`AP-BOOTSTRAP-1` is Candidate because every measurement of its waveform comes
-from one transmitter class. `BLE-ACTIVATE-1` is Candidate because no two
-independent implementations have activated a BLE candidate against each other.
-Until that changes, `MCL Stranger-Contact 1` over a BLE candidate bearer is
+`AP-BOOTSTRAP-1` and `BLE-ACTIVATE-1` remain Candidate because component-level
+bidirectional physical evidence is not the builder-interoperability acceptance
+test. The DFR1154 and Android implementations have exchanged acoustic bootstrap
+objects and activated BLE candidates in both role orientations using different
+platform stacks. What remains unproved is the complete zero-prior facade
+lifecycle through migration and the 3+ shared-air contention variant. Until
+those pass, `MCL Stranger-Contact 1` is
 **not guaranteed** between builders who never coordinate — and the caveat
 travels in code, as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, rather than
 only in prose.
@@ -251,9 +256,8 @@ Your options now:
 
 Understand what the first option does not buy you: if you choose DTLS with P-256
 and another builder chooses something else, you have both "secured MCL" and
-still cannot authenticate each other. A named `MCL-S1` profile is being selected
-by measurement in `mcl-link/research/mcl-s1-benchmark-round1.md`, precisely so
-that stops being true.
+still cannot authenticate each other. A named security profile is post-v1
+research; v1.0 deliberately does not select or imply one.
 
 **Reception is never permission.** MCL keeps these strictly apart and so must
 you:
