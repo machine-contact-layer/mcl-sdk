@@ -80,6 +80,10 @@ typedef struct room_s {
        PATH_RESPONSE, then loses COMMIT and every retry. */
     int limit_candidate_delivery;
     unsigned candidate_deliveries_left;
+    unsigned drop_accepts;
+    unsigned accepts_dropped;
+    int wait_for_both_candidates;
+    int candidate_tx_uncertain;
 } room_t;
 
 typedef struct {
@@ -123,6 +127,13 @@ static int32_t plat_send(void *user, uint8_t transport_id,
     transmission_t *t;
 
     if (size > MAX_FRAME) { return -1; }
+    /* AP-BOOTSTRAP-1 acceptance has the distinct 16-byte wire shape. Drop
+       transmission, not coordinator state, to reproduce a real lost reply. */
+    if (transport_id == MCL_CONTACT_TRANSPORT_AP && size == 16u && room->drop_accepts > 0u) {
+        room->drop_accepts--;
+        room->accepts_dropped++;
+        return 0;
+    }
     if (room->count >= MAX_TX) {
         room->dropped_full++;
         return -1;
@@ -136,7 +147,7 @@ static int32_t plat_send(void *user, uint8_t transport_id,
     if (transport_id != MCL_CONTACT_TRANSPORT_AP &&
         room->limit_candidate_delivery) {
         if (room->candidate_deliveries_left == 0u) {
-            return 0;
+            return room->candidate_tx_uncertain ? 1 : 0;
         }
         room->candidate_deliveries_left--;
     }
@@ -147,7 +158,7 @@ static int32_t plat_send(void *user, uint8_t transport_id,
     t->size = size;
     t->from = (uint8_t)p->index;
     t->deliver_at = room->now + 10u;
-    return 0;
+    return transport_id != MCL_CONTACT_TRANSPORT_AP && room->candidate_tx_uncertain ? 1 : 0;
 }
 
 static mcl_machine_candidate_t plat_open(void *user, uint8_t transport_id,
@@ -248,7 +259,9 @@ static void tick(uint32_t step_ms, mcl_machine_event_t *events)
                 (void)mcl_machine_admit(&g_machines[i]);
             }
         }
-        if (g_room.pending_open && g_room.opens[i] > 0u) {
+        if (g_room.pending_open && g_room.opens[i] > 0u &&
+            (!g_room.wait_for_both_candidates ||
+             (g_room.opens[0] > 0u && g_room.opens[1] > 0u))) {
             /* The integrator's bearer is up now. Idempotent by construction:
                a second call is refused, and the test relies on that. */
             if (g_room.refuse_pending_open) {
@@ -513,6 +526,37 @@ static void test_pending_candidate_refused(void)
           "the failed pending candidate is closed exactly through the facade");
 }
 
+static void test_lost_accept_preserves_candidate(int uncertain)
+{
+    mcl_machine_config_t cfg[2];
+    mcl_platform_t plat[2];
+    mcl_machine_event_t ev[2];
+    unsigned i, established = 0u;
+    printf("[machine] lost ACCEPT retains the same pending platform candidate\n");
+    room_reset();
+    g_room.pending_open = 1;
+    g_room.wait_for_both_candidates = 1;
+    g_room.drop_accepts = 1u;
+    g_room.candidate_tx_uncertain = uncertain;
+    g_node_count = 2u;
+    for (i = 0u; i < 2u; ++i) {
+        base_platform(&plat[i], &g_peers[i], 1);
+        (void)mcl_machine_config_deployment(&cfg[i], MCL_DEPLOYMENT_REFERENCE_1,
+            0x71717171u + i, i == 0u ? MCL_CONTACT_ROLE_INITIATOR : MCL_CONTACT_ROLE_RESPONDER);
+        (void)mcl_machine_init(&g_machines[i], &cfg[i], &plat[i]);
+        (void)mcl_machine_start(&g_machines[i]);
+    }
+    for (i = 0u; i < 6000u && established != 3u; ++i) {
+        tick(10u, ev);
+        if (ev[0].kind == MCL_MACHINE_EVENT_CONTACT_ESTABLISHED) { established |= 1u; }
+        if (ev[1].kind == MCL_MACHINE_EVENT_CONTACT_ESTABLISHED) { established |= 2u; }
+    }
+    check(g_room.accepts_dropped == 1u, "the first acoustic acceptance was lost");
+    check(established == 3u, "both endpoints establish after acceptance retransmission");
+    check(g_room.opens[0] == 1u && g_room.opens[1] == 1u, "each candidate opens once across a duplicate OFFER");
+    check(g_room.closes[0] == 0u && g_room.closes[1] == 0u, "acceptance recovery does not tear down either candidate");
+}
+
 static void test_policy_callback_and_refusal(void)
 {
     int a = 0, b = 0, policy = 0;
@@ -673,18 +717,19 @@ static void test_candidate_refused(void)
  * platform bearers because a pre-contact abandonment has no CONTACT_LOST
  * event.  A new rendezvous then leaked or overwrote the old handle.
  */
-static void test_lost_commit_releases_both_candidates(void)
+static void test_lost_commit_releases_both_candidates(int uncertain, unsigned deliveries)
 {
     mcl_machine_config_t ca, cb;
     mcl_platform_t pa, pb;
     mcl_machine_event_t ev[MAX_NODES];
-    unsigned i;
+    unsigned i, established = 0u;
 
     printf("[machine] a vanished candidate path releases both platform opens\n");
     room_reset();
     g_node_count = 2u;
     g_room.limit_candidate_delivery = 1;
-    g_room.candidate_deliveries_left = 2u;
+    g_room.candidate_deliveries_left = deliveries;
+    g_room.candidate_tx_uncertain = uncertain;
 
     base_platform(&pa, &g_peers[0], 1);
     base_platform(&pb, &g_peers[1], 1);
@@ -700,12 +745,15 @@ static void test_lost_commit_releases_both_candidates(void)
     for (i = 0u; i < 12000u &&
          (g_room.closes[0] == 0u || g_room.closes[1] == 0u); ++i) {
         tick(10u, ev);
+        if (ev[0].kind == MCL_MACHINE_EVENT_CONTACT_ESTABLISHED ||
+            ev[1].kind == MCL_MACHINE_EVENT_CONTACT_ESTABLISHED) { established++; }
     }
 
     check(g_room.opens[0] > 0u && g_room.opens[1] > 0u,
           "both peers opened the agreed candidate");
     check(g_room.candidate_deliveries_left == 0u,
-          "PATH_CHALLENGE and PATH_RESPONSE crossed before the break");
+          "the configured delivery budget was consumed");
+    check(established == 0u, "queue admission or an incomplete handshake is not an established contact");
     check(g_room.closes[0] > 0u && g_room.closes[1] > 0u,
           "both opened candidates were released after bounded failure");
 }
@@ -727,10 +775,14 @@ int main(void)
     test_two_strangers();
     test_pending_candidate();
     test_pending_candidate_refused();
+    test_lost_accept_preserves_candidate(0);
+    test_lost_accept_preserves_candidate(1);
     test_policy_callback_and_refusal();
     test_no_common_bearer();
     test_candidate_refused();
-    test_lost_commit_releases_both_candidates();
+    test_lost_commit_releases_both_candidates(0, 2u);
+    test_lost_commit_releases_both_candidates(1, 2u);
+    test_lost_commit_releases_both_candidates(1, 0u);
     test_names();
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);

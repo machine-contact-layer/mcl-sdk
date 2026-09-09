@@ -903,6 +903,7 @@ static mcl_rdv_status_t send_control(mcl_rdv_t *rdv, mcl_handoff_op_t op,
     mcl_handoff_control_t control;
     uint8_t scratch[MCL_LINK_FRAME_MIN_SIZE + MCL_LINK_FRAME_MAX_OPTIONAL + 32u];
     size_t sent = 0u;
+    mcl_sdk_status_t status;
 
     memset(&control, 0, sizeof(control));
     control.operation = op;
@@ -912,9 +913,13 @@ static mcl_rdv_status_t send_control(mcl_rdv_t *rdv, mcl_handoff_op_t op,
         memcpy(control.challenge, challenge, MCL_CONTACT_CHALLENGE_SIZE);
         control.challenge_present = 1u;
     }
-    if (mcl_node_send_handoff(rdv->node, &control,
+    status = mcl_node_send_handoff(rdv->node, &control,
                               MCL_LINK_FLAG_SESSION | MCL_LINK_FLAG_FRAME_CHECK,
-                              scratch, sizeof(scratch), &sent) != MCL_SDK_OK) {
+                              scratch, sizeof(scratch), &sent);
+    if (status == MCL_SDK_ERR_TX_UNCERTAIN) {
+        return MCL_RDV_TX_UNCERTAIN;
+    }
+    if (status != MCL_SDK_OK) {
         return MCL_RDV_ERR_TRANSPORT;
     }
     return MCL_RDV_OK;
@@ -997,6 +1002,7 @@ static void retransmit(mcl_rdv_t *rdv, uint32_t now, mcl_handoff_op_t op,
 static void stage_accepting(mcl_rdv_t *rdv, uint32_t now)
 {
     mcl_rdv_status_t rc;
+    const mcl_rdv_state_t previous_state = rdv->state;
 
     if (!elapsed(now, rdv->deadline_ms)) {
         return;
@@ -1019,7 +1025,10 @@ static void stage_accepting(mcl_rdv_t *rdv, uint32_t now)
         return;
     }
     rdv->has_pending_accept = 0u;
-    rdv->state = MCL_RDV_STATE_AGREED;
+    /* A duplicate OFFER resends the stored acceptance while retaining the
+       platform candidate. It is not a second bearer agreement. */
+    rdv->state = previous_state == MCL_RDV_STATE_ACCEPTING
+                   ? MCL_RDV_STATE_AGREED : previous_state;
     /*
      * Long enough for the CONTROLLER'S WHOLE retransmission schedule.
      *
@@ -1034,8 +1043,10 @@ static void stage_accepting(mcl_rdv_t *rdv, uint32_t now)
                        + (MCL_RDV_MAX_HANDOFF_RETRIES + 1u)
                          * or_default(rdv->config.response_timeout_ms,
                                       DEFAULT_RESPONSE_TIMEOUT_MS);
-    queue(rdv, MCL_RDV_EVENT_BEARER_AGREED,
-          rdv->offered_transport, rdv->offered_profile);
+    if (previous_state == MCL_RDV_STATE_ACCEPTING) {
+        queue(rdv, MCL_RDV_EVENT_BEARER_AGREED,
+              rdv->offered_transport, rdv->offered_profile);
+    }
 }
 
 /*
@@ -1151,6 +1162,7 @@ static void stage_committing(mcl_rdv_t *rdv, uint32_t now)
  */
 static mcl_rdv_status_t begin_validation(mcl_rdv_t *rdv, uint32_t now)
 {
+    mcl_rdv_status_t status;
     /*
      * THE CHALLENGE MUST BE UNPREDICTABLE, AND THERE IS NO FALLBACK.
      *
@@ -1177,10 +1189,13 @@ static mcl_rdv_status_t begin_validation(mcl_rdv_t *rdv, uint32_t now)
         return MCL_RDV_ERR_STATE;
     }
     rdv->retries = 0u;
-    if (send_control(rdv, MCL_HANDOFF_OP_PATH_CHALLENGE,
-                     rdv->challenge) != MCL_RDV_OK) {
+    status = send_control(rdv, MCL_HANDOFF_OP_PATH_CHALLENGE, rdv->challenge);
+    if (status != MCL_RDV_OK && status != MCL_RDV_TX_UNCERTAIN) {
         return MCL_RDV_ERR_TRANSPORT;
     }
+    /* Queue admission is not delivery, but it is not refusal either. Keep
+       the candidate and require a matching response; silence follows the
+       same bounded retransmission path as any other lost challenge. */
     rdv->state = MCL_RDV_STATE_VALIDATING;
     rdv->deadline_ms = now + or_default(rdv->config.response_timeout_ms,
                                         DEFAULT_RESPONSE_TIMEOUT_MS);
@@ -1310,7 +1325,8 @@ mcl_rdv_status_t mcl_rdv_poll(mcl_rdv_t *rdv, mcl_rdv_event_t *out)
     case MCL_RDV_STATE_ACCEPTING:  stage_accepting(rdv, now);  break;
     case MCL_RDV_STATE_AGREED:
     case MCL_RDV_STATE_CANDIDATE_PENDING:
-        stage_awaiting_challenge(rdv, now);
+        if (rdv->has_pending_accept) { stage_accepting(rdv, now); }
+        else { stage_awaiting_challenge(rdv, now); }
         break;
     case MCL_RDV_STATE_ADMITTING:  stage_admitting(rdv, now);  break;
     case MCL_RDV_STATE_VALIDATING: stage_validating(rdv, now); break;
@@ -1605,7 +1621,9 @@ mcl_rdv_status_t mcl_rdv_deliver(mcl_rdv_t *rdv,
                 object.body.transport_offer.profile_id ==
                     rdv->offered_profile) {
                 rdv->has_pending_accept = 1u;
-                rdv->state = MCL_RDV_STATE_ACCEPTING;
+                /* Retain AGREED/CANDIDATE_PENDING while replaying ACCEPT.
+                   Returning to ACCEPTING tells the facade to tear down its
+                   live candidate and incorrectly opens it a second time. */
                 rdv->deadline_ms = now + mcl_rdv_reply_delay_ms(rdv);
             }
             break;
