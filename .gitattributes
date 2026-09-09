@@ -27,3 +27,6 @@
 # that was never committed; it would only make the archived record disagree
 # with itself. The measurements that must survive byte-for-byte are the
 # captures, and those are binary above.
+
+# Preserve exact provenance when source is exported without .git.
+.git-archive-revision export-subst

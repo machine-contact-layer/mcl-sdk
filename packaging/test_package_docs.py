@@ -28,6 +28,18 @@ class PackageDocumentationTests(unittest.TestCase):
         (self.root / 'README.md').write_text('[spec](docs/spec.md#section)', encoding='utf-8')
         self.check()
 
+    def test_archive_revision(self):
+        revision = '1234567890abcdef1234567890abcdef12345678'
+        (self.root / '.git-archive-revision').write_text(revision + '\n', encoding='utf-8')
+        self.assertEqual(docs.source_revision(self.root), revision)
+
+    def test_unexpanded_or_missing_archive_revision_fails(self):
+        with self.assertRaisesRegex(ValueError, 'missing exact source revision'):
+            docs.source_revision(self.root)
+        (self.root / '.git-archive-revision').write_text('$Format:%H$\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'missing exact source revision'):
+            docs.source_revision(self.root)
+
     def test_missing_deep_reference_fails(self):
         (self.root / 'docs/spec.md').write_text('[missing](missing-profile.md)', encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'unresolved packaged link'):

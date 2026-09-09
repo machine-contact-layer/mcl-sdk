@@ -31,6 +31,19 @@ SEEDS = {
 }
 
 
+def source_revision(repo):
+    """Resolve an exact revision in both checkouts and git-archive exports."""
+    if (repo / '.git').exists():
+        value = subprocess.check_output(
+            ['git', '-C', str(repo), 'rev-parse', 'HEAD'], text=True).strip()
+    else:
+        metadata = repo / '.git-archive-revision'
+        value = metadata.read_text(encoding='utf-8').strip() if metadata.is_file() else ''
+    if not re.fullmatch(r'[0-9a-f]{40}', value):
+        raise ValueError(f'missing exact source revision for {repo.name}')
+    return value
+
+
 def targets(text):
     # Literal Markdown syntax in fenced examples is not a link.
     text = re.sub(r"(?ms)^```[^\n]*\n.*?^```[^\n]*$", "", text)
@@ -107,8 +120,7 @@ def assemble(root, package):
             return Path(os.path.relpath(mapping[original], destination.parent)).as_posix() + anchor
         repo, *relative = original.relative_to(root).parts
         if repo not in revisions:
-            revisions[repo] = subprocess.check_output(
-                ['git', '-C', str(root / repo), 'rev-parse', 'HEAD'], text=True).strip()
+            revisions[repo] = source_revision(root / repo)
         kind = 'tree' if original.is_dir() else 'blob'
         return f"https://github.com/machine-contact-layer/{repo}/{kind}/{revisions[repo]}/{'/'.join(relative)}{anchor}"
 
