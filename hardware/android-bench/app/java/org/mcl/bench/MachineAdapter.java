@@ -77,6 +77,7 @@ public final class MachineAdapter implements AutoCloseable, Mcl.MachinePlatform 
     @Override
     public int transmit(int transportId, byte[] bytes) {
         if (transportId == TRANSPORT_AP) {
+            traceAp("TX_ATTEMPT", bytes);
             final int samples = Mcl.modulatedSamples(bytes.length, bandLow, bandHigh);
             if (samples <= 0) {
                 return -1;
@@ -127,10 +128,17 @@ public final class MachineAdapter implements AutoCloseable, Mcl.MachinePlatform 
         });
     }
 
+    private void traceAp(String direction, byte[] bytes) {
+        final StringBuilder hex = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) { hex.append(String.format("%02X", value & 255)); }
+        log.line("AP " + direction + " hex=" + hex);
+    }
+
     private void receive(int transport, byte[] bytes) {
         if (!running) {
             return;
         }
+        if (transport == TRANSPORT_AP) { traceAp("RX", bytes); }
         final int status = Mcl.machineReceive(handle, transport, bytes, bytes.length);
         if (status != 0) {
             log.line("MACHINE receive status=" + status + " transport=" + transport);

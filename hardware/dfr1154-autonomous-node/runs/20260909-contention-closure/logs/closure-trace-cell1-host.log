@@ -1,0 +1,64 @@
+HOST start_utc=2026-09-09T17:26:23Z epoch=1788974783.1265242 monotonic=179700.1622114
+Broadcasting: Intent { act=org.mcl.bench.CMD flg=0x400000 pkg=org.mcl.bench (has extras) }
+Broadcast completed: result=0
+Broadcasting: Intent { act=org.mcl.bench.CMD flg=0x400000 pkg=org.mcl.bench (has extras) }
+Broadcast completed: result=0
+BOARD MCLAUTO CONFIG ok scenario=2 dur=120000 band=0/0 gain=100 cand=3 admit=1
+ANDROID 09-09 22:56:24.118  1069  1122 I MCLBENCH: MACHINE started source_ref is local; poll_ms=10
+BOARD MCLAUTO ARMED restarting into the run
+BOARD MCLAUTO armed scenario=2, restarting into the run
+BOARD MCLAUTO ADDRESS_SELFTEST PASS type=0 original=c1:23:45:67:89:ab old=ab:89:67:45:23:c1
+BOARD MCLAUTO ADDRESS_SELFTEST PASS type=1 original=c1:23:45:67:89:ab old=ab:89:67:45:23:c1
+BOARD MCLAUTO BEACON_SELFTEST PASS exact/truncated/overlong/wrong-token
+BOARD MCLAUTO READY wire_major=1 link_major=1 arena=171632 window=47360 scratch=76912 min_window=47360 free_heap=85848 psram=8101604/8388608 source_ref=3308234211
+BOARD MCLAUTO armed run resumed after restart, wifi never started
+BOARD MCLAUTO listener prepare rc=0 ms=299
+BOARD MCLAUTO phase QUIESCE free_heap=85848
+BOARD MCLAUTO phase RENDEZVOUS free_heap=85848
+BOARD MCLAUTO machine started deployment=MCL-REFERENCE-DEPLOYMENT-1 candidate_transport=3
+BOARD MCLAUTO run start scenario=2 duration=120000 quiesce=1 free_heap=85848
+BOARD MCLAUTO emitted 10 bytes, 57600 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO CONTACT 10 bytes
+BOARD MCLAUTO PEER_DETECTED peer_ref=CDA89C75
+BOARD MCLAUTO CONTACT 10 bytes
+BOARD MCLAUTO emitted 17 bytes, 66560 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+ANDROID 09-09 22:56:40.453  1069  1122 I MCLBENCH: MACHINE BLE-ACTIVATE scan initiated=true
+BOARD MCLAUTO CONTACT 16 bytes
+BOARD MCLAUTO phase ACTIVATE free_heap=85848
+BOARD MCLAUTO offerer: advertising own token 0ED8C8C2
+BOARD MCLAUTO BLE up free_heap=14140 largest=7668
+BOARD MCLAUTO BLE advertising token=0ED8C8C2 beacon=000000000ED8C8C2
+BOARD MCLAUTO CONTACT 16 bytes
+BOARD MCLAUTO BLE peripheral ready after notification subscription
+ANDROID 09-09 22:56:42.651  1069  1122 I MCLBENCH: MACHINE candidate ready status=0
+ANDROID 09-09 22:56:43.036  1069  1097 I MCLBENCH: BLE frame in, 34 bytes
+ANDROID 09-09 22:56:43.037  1069  1122 I MCLBENCH: MACHINE event=2 transport=3 profile=1 peer_ref=C52FA5E3 session_ref=E0585224 status=0 ACTION=machine admit|refuse
+BOARD MCLAUTO phase POLICY free_heap=10276
+BOARD MCLAUTO policy: peer_ref=A1A78D73 transport=3 -> admit
+BOARD MCLAUTO phase MIGRATED free_heap=10276
+BOARD MCLAUTO CONTACT_ESTABLISHED transport=3 profile=1 ses=E0585224
+ANDROID 09-09 22:56:43.820  1069  1122 I MCLBENCH: MACHINE policy admit status=0
+ANDROID 09-09 22:56:43.892  1069  1098 I MCLBENCH: BLE frame in, 26 bytes
+ANDROID 09-09 22:56:43.942  1069  1122 I MCLBENCH: MACHINE event=3 transport=3 profile=1 peer_ref=C52FA5E3 session_ref=E0585224 status=0
+BOARD MCLAUTO run end state=DONE heard=0 recovered=4 emitted=2 unscanned=4817024
+BOARD MCLAUTO run end cap_blocks=5464 cap_samples=5595136 peak=3361 mean=1106
+BOARD MCLAUTO run end pushed=5147648 searched=216995 unscanned=4817024 queue=0/0
+BOARD MCLAUTO run end read_ms=116491/25 poll_ms=0/0 polls=0
+BOARD MCLAUTO run end objects=0 ble_tx=2 ble_rx=2 ble_frag_rej=0
+BOARD MCLAUTO run end scan_seen=0 match=0 uuid=0 slices=0 heap=10276/7668
+BOARD MCLAUTO phase TEARDOWN free_heap=10276
+BOARD MCLAUTO BLE down free_heap=83828
+BOARD MCLAUTO wifi up ssid=mcl-auto-node ip=192.168.4.1
+BOARD MCLAUTO wifi restored; result available
+BOARD MCLAUTO phase REPORT free_heap=29152
+ANDROID 09-09 22:58:25.010  1069  1871 I MCLBENCH: BLE central link down, status=19
+MCLAUTO RESULT state=DONE phase=REPORT zero_prior=true heard=0 recovered=4 emitted=2 objects=0 ble_tx=2 ble_rx=2 scan_match=0 scan_uuid_only=0 log_dropped=0 ble_lost=0 machine=MIGRATED
+MCLAUTO VALUE own_source_ref=3308234211 provenance=LOCAL
+MCLAUTO VALUE peer_source_ref=3450379381 provenance=FROM_AIR
+MCLAUTO VALUE own_endpoint_token=249088194 provenance=LOCAL
+MCLAUTO VALUE session_ref=3763884580 provenance=FROM_AIR
+MCLAUTO SCANRAW len=0 hex=
+
+

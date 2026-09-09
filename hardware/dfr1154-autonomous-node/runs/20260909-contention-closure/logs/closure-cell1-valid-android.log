@@ -1,0 +1,13 @@
+--------- beginning of main
+09-09 22:40:59.271 29617 29617 I MCLBENCH: > machine start responder
+09-09 22:40:59.330 29617 29656 I MCLBENCH: AUDIO capture open, source=VOICE_RECOGNITION rate=48000
+09-09 22:40:59.332 29617 29656 I MCLBENCH: MACHINE started source_ref is local; poll_ms=10
+09-09 22:41:02.127 29617 29656 I MCLBENCH: MACHINE event=1 transport=1 profile=0 peer_ref=CFDDF693 session_ref=00000000 status=0
+09-09 22:41:05.493 29617 29656 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 22:41:05.579 29617 29656 I MCLBENCH: AUDIO track PLAYING play_state=3 session=17033
+09-09 22:41:07.125 29617 29656 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 22:41:10.088 29617 29656 I MCLBENCH: BLE ready advertiser=true scanner=true multi_adv=true
+09-09 22:41:10.129 29617 29656 I MCLBENCH: BLE GATT server up, MCL-RX write / MCL-TX notify
+09-09 22:41:10.152 29617 29656 I MCLBENCH: BLE advertising token=C538376E beacon=00000000C538376E
+09-09 22:41:10.152 29617 29656 I MCLBENCH: MACHINE BLE-ACTIVATE advertise initiated=true
+09-09 22:41:10.194 29617 29617 I MCLBENCH: BLE advertising started, tx_power=3

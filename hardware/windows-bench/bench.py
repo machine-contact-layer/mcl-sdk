@@ -8,6 +8,7 @@ from pathlib import Path
 import queue
 import time
 import uuid
+import wave
 
 import numpy as np
 import sounddevice as sd
@@ -76,9 +77,13 @@ class Bench:
             fn.argtypes, fn.restype = argtypes, result
         self.audio_queue = queue.Queue(maxsize=128)
         self.audio_drops = 0
+        self.capture_blocks = []
+        self.capture_samples = 0
+        self.capture_limit = min(getattr(args, 'duration', 120) + 5, 300) * 48000
         self.max_audio_queue_ms = 0.0
         self.self_tx = False
         self.busy = False
+        self.last_busy_report = False
         self.ready = False
         self.closed = False
         self.generation = 0
@@ -87,10 +92,11 @@ class Bench:
         self.tx_queue = asyncio.Queue(maxsize=16)
         self.established = []
         self.rejections = 0
+        self.first_slot = getattr(args, 'first_slot', None)
         self.source = int.from_bytes(os.urandom(4), 'little') or 1
         self.callbacks = (CLOCK(lambda _: int(time.monotonic() * 1000) & 0xffffffff),
                           RANDOM(self.random), SEND(self.send),
-                          FLAG(lambda _: int(self.busy)), FLAG(lambda _: int(self.self_tx)),
+                          FLAG(self.medium_busy), FLAG(lambda _: int(self.self_tx)),
                           OPEN(self.open_candidate), CLOSE(self.close_candidate))
         self.platform = Platform(*self.callbacks, None, None)
         self.handle = self.dll.bench_create(C.byref(self.platform), self.source, args.role)
@@ -99,8 +105,19 @@ class Bench:
         log(f'source_ref={self.source:08X} provenance=LOCAL deployment=MCL-REFERENCE-DEPLOYMENT-1')
         log('dll_sha256=' + hashlib.sha256(Path(args.dll).read_bytes()).hexdigest())
 
+    def medium_busy(self, _):
+        if self.busy != self.last_busy_report:
+            log(f'AP carrier_busy={int(self.busy)}')
+            self.last_busy_report = self.busy
+        return int(self.busy)
+
     def random(self, _, out, size):
-        C.memmove(out, os.urandom(size), size)
+        if size == 1 and self.first_slot is not None:
+            log(f'LAB first contention draw={self.first_slot}; subsequent RNG=OS')
+            out[0] = self.first_slot
+            self.first_slot = None
+        else:
+            C.memmove(out, os.urandom(size), size)
         return 0
 
     def task(self, coroutine):
@@ -280,6 +297,9 @@ class Bench:
                 self.tx_queue.task_done()
 
     def captured(self, pcm, frames, timing, status):
+        if getattr(self.args, 'capture', None) and self.capture_samples + frames <= self.capture_limit:
+            self.capture_blocks.append(pcm.copy())
+            self.capture_samples += frames
         if status:
             self.audio_drops += 1
         try:
@@ -309,6 +329,8 @@ class Bench:
                         out, info = (C.c_uint8 * 17)(), (C.c_uint32 * 3)()
                         result = self.dll.bench_audio(self.handle, pcm.ctypes.data_as(C.POINTER(C.c_int16)), len(pcm), out, info)
                         self.busy = result == 3 and not self_echo
+                        if result == 2 and not self_echo:
+                            log(f'AP HEARD_UNRECOVERED captured_at={captured_at:.3f}')
                         if result == 1 and not self_echo:
                             log(f'AP RX bytes={info[0]} hex={bytes(out[:info[0]]).hex()} contacts={info[2]}')
                             self.dll.bench_receive(self.handle, 1, out, info[0])
@@ -322,6 +344,14 @@ class Bench:
                         self.established.append(list(event))
                     await asyncio.sleep(0.01)
         finally:
+            if getattr(self.args, 'capture', None):
+                with wave.open(self.args.capture, 'wb') as capture:
+                    capture.setnchannels(1)
+                    capture.setsampwidth(2)
+                    capture.setframerate(48000)
+                    for block in self.capture_blocks:
+                        capture.writeframesraw(block.tobytes())
+                log(f'AUDIO capture_samples={self.capture_samples} path={self.args.capture}')
             log(f'RESULT state={self.dll.bench_state(self.handle).decode()} established={len(self.established)} audio_drops={self.audio_drops} fragment_rejections={self.rejections} max_audio_queue_ms={self.max_audio_queue_ms:.1f}')
             self.ready = False
             self.closed = True
@@ -341,6 +371,8 @@ async def main():
     parser.add_argument('--role', type=int, choices=[0, 1], default=1)
     parser.add_argument('--input', type=int, default=None)
     parser.add_argument('--output', type=int, default=None)
+    parser.add_argument('--first-slot', type=int, choices=range(8), help='disclosed laboratory first contention draw; later draws remain OS random')
+    parser.add_argument('--capture', help='retain raw microphone PCM, including local TX; bounded to 300 seconds')
     parser.add_argument('--admit', action='store_true', help='explicit laboratory policy for reachable strangers')
     args = parser.parse_args()
     await Bench(args).run()

@@ -1,0 +1,86 @@
+HOST start_utc=2026-09-09T17:19:45Z epoch=1788974385.2396135 monotonic=179302.2752989
+Broadcasting: Intent { act=org.mcl.bench.CMD flg=0x400000 pkg=org.mcl.bench (has extras) }
+Broadcast completed: result=0
+Broadcasting: Intent { act=org.mcl.bench.CMD flg=0x400000 pkg=org.mcl.bench (has extras) }
+Broadcast completed: result=0
+BOARD MCLAUTO CONFIG ok scenario=2 dur=120000 band=0/0 gain=100 cand=3 admit=1
+ANDROID 09-09 22:49:46.213 29617 29656 I MCLBENCH: MACHINE started source_ref is local; poll_ms=10
+BOARD MCLAUTO ARMED restarting into the run
+BOARD MCLAUTO armed scenario=2, restarting into the run
+BOARD MCLAUTO ADDRESS_SELFTEST PASS type=0 original=c1:23:45:67:89:ab old=ab:89:67:45:23:c1
+BOARD MCLAUTO ADDRESS_SELFTEST PASS type=1 original=c1:23:45:67:89:ab old=ab:89:67:45:23:c1
+BOARD MCLAUTO BEACON_SELFTEST PASS exact/truncated/overlong/wrong-token
+BOARD MCLAUTO READY wire_major=1 link_major=1 arena=171632 window=47360 scratch=76912 min_window=47360 free_heap=85848 psram=8101604/8388608 source_ref=2521823543
+BOARD MCLAUTO armed run resumed after restart, wifi never started
+BOARD MCLAUTO listener prepare rc=0 ms=299
+BOARD MCLAUTO phase QUIESCE free_heap=85848
+BOARD MCLAUTO phase RENDEZVOUS free_heap=85848
+BOARD MCLAUTO machine started deployment=MCL-REFERENCE-DEPLOYMENT-1 candidate_transport=3
+BOARD MCLAUTO run start scenario=2 duration=120000 quiesce=1 free_heap=85848
+BOARD MCLAUTO emitted 10 bytes, 57600 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+ANDROID 09-09 22:49:56.463 29617 29656 I MCLBENCH: MACHINE event=1 transport=1 profile=0 peer_ref=964FF937 session_ref=00000000 status=0
+BOARD MCLAUTO emitted 10 bytes, 57600 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO emitted 10 bytes, 57600 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO CONTACT 10 bytes
+BOARD MCLAUTO CONTACT 17 bytes
+BOARD MCLAUTO emitted 10 bytes, 57600 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO CONTACT 17 bytes
+BOARD MCLAUTO emitted 10 bytes, 57600 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO CONTACT 17 bytes
+BOARD MCLAUTO emitted 10 bytes, 57600 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+ANDROID 09-09 22:50:43.279 29617 29656 I MCLBENCH: MACHINE event=5 transport=0 profile=0 peer_ref=964FF937 session_ref=00000000 status=0
+BOARD MCLAUTO CONTACT 10 bytes
+BOARD MCLAUTO PEER_DETECTED peer_ref=1AA858A6
+BOARD MCLAUTO emitted 17 bytes, 66560 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO CONTACT 16 bytes
+BOARD MCLAUTO phase ACTIVATE free_heap=85848
+BOARD MCLAUTO offerer: advertising own token 28EE3677
+BOARD MCLAUTO BLE up free_heap=14140 largest=7668
+BOARD MCLAUTO BLE advertising token=28EE3677 beacon=0000000028EE3677
+BOARD MCLAUTO CONTACT 10 bytes
+BOARD MCLAUTO CONTACT 10 bytes
+BOARD MCLAUTO CONTACT 10 bytes
+BOARD MCLAUTO activation window expired without a connection
+BOARD MCLAUTO candidate closed on transport 3
+BOARD MCLAUTO BLE down free_heap=83944
+BOARD MCLAUTO ERROR status=3 transport=0
+BOARD MCLAUTO emitted 10 bytes, 57600 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO CONTACT 17 bytes
+BOARD MCLAUTO emitted 16 bytes, 65280 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO acceptor: peer token 03FEAE61 learned from the air
+BOARD MCLAUTO BLE up free_heap=12468 largest=7668
+BOARD MCLAUTO BLE scanning for token=03FEAE61
+BOARD MCLAUTO CONTACT 17 bytes
+BOARD MCLAUTO emitted 16 bytes, 65280 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO CONTACT 17 bytes
+BOARD MCLAUTO emitted 16 bytes, 65280 samples
+BOARD MCLAUTO listener prepare rc=0 ms=300
+BOARD MCLAUTO run end state=DONE heard=2 recovered=12 emitted=11 unscanned=0
+BOARD MCLAUTO run end cap_blocks=4754 cap_samples=4868096 peak=4236 mean=1104
+BOARD MCLAUTO run end pushed=175104 searched=163456 unscanned=0 queue=0/0
+BOARD MCLAUTO run end read_ms=101164/25 poll_ms=0/0 polls=0
+BOARD MCLAUTO run end objects=0 ble_tx=0 ble_rx=0 ble_frag_rej=0
+BOARD MCLAUTO run end scan_seen=4 match=0 uuid=0 slices=0 heap=11148/7668
+BOARD MCLAUTO phase TEARDOWN free_heap=11148
+BOARD MCLAUTO BLE down free_heap=83944
+BOARD MCLAUTO wifi up ssid=mcl-auto-node ip=192.168.4.1
+BOARD MCLAUTO wifi restored; result available
+BOARD MCLAUTO phase REPORT free_heap=29244
+MCLAUTO RESULT state=DONE phase=REPORT zero_prior=true heard=2 recovered=12 emitted=11 objects=0 ble_tx=0 ble_rx=0 scan_match=0 scan_uuid_only=0 log_dropped=0 ble_lost=0 machine=AGREED
+MCLAUTO VALUE own_source_ref=2521823543 provenance=LOCAL
+MCLAUTO VALUE peer_source_ref=447240358 provenance=FROM_AIR
+MCLAUTO VALUE own_endpoint_token=686700151 provenance=LOCAL
+MCLAUTO VALUE peer_endpoint_token=67022433 provenance=FROM_AIR
+MCLAUTO SCANRAW len=0 hex=
+
+

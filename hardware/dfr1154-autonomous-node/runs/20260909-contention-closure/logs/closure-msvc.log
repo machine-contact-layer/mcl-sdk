@@ -1,0 +1,35 @@
+
+=== MSVC /W4 /WX, all eight repositories ===
+root: C:\Users\marsm\Downloads\mcl
+
+-- mcl-core
+   OK
+
+-- mcl-wire
+   OK
+
+-- mcl-link
+   OK
+
+-- mcl-sdk
+   OK
+
+-- mcl-ap
+   OK
+
+-- mcl-ip
+   OK
+
+-- mcl-ble
+   OK
+
+-- mcl-uwb
+   OK
+
+=== SUMMARY ===
+test targets run: 43
+MSVC GATES PASSED
+
+This is one half. Run local-gates.sh for GCC, Clang, ASan/UBSan,
+the ARM and RISC-V freestanding cross-compiles and the C++ header
+compiles. Neither run alone is "the gates".

@@ -1,0 +1,29 @@
+--------- beginning of main
+09-09 22:45:45.134 29617 29617 I MCLBENCH: > machine start responder
+09-09 22:45:45.169 29617 29656 I MCLBENCH: AUDIO capture open, source=VOICE_RECOGNITION rate=48000
+09-09 22:45:45.170 29617 29656 I MCLBENCH: MACHINE started source_ref is local; poll_ms=10
+09-09 22:45:47.482 29617 29656 I MCLBENCH: MACHINE event=1 transport=1 profile=0 peer_ref=EA5BA674 session_ref=00000000 status=0
+09-09 22:45:48.545 29617 29656 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 22:45:48.629 29617 29656 I MCLBENCH: AUDIO track PLAYING play_state=3 session=17073
+09-09 22:45:50.198 29617 29656 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 22:45:56.282 29617 29656 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 22:45:56.373 29617 29656 I MCLBENCH: AUDIO track PLAYING play_state=3 session=17081
+09-09 22:45:57.952 29617 29656 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 22:46:02.896 29617 29656 I MCLBENCH: BLE ready advertiser=true scanner=true multi_adv=true
+09-09 22:46:02.905 29617 29656 I MCLBENCH: BLE GATT server up, MCL-RX write / MCL-TX notify
+09-09 22:46:02.911 29617 29656 I MCLBENCH: BLE advertising token=8689953A beacon=000000008689953A
+09-09 22:46:02.911 29617 29656 I MCLBENCH: MACHINE BLE-ACTIVATE advertise initiated=true
+09-09 22:46:02.955 29617 29617 I MCLBENCH: BLE advertising started, tx_power=3
+09-09 22:46:04.372 29617 29639 I MCLBENCH: BLE central connected: E8:F6:0A:86:7B:D9
+09-09 22:46:05.125 29617 29639 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 22:46:05.129 29617 29639 I MCLBENCH: BLE candidate ready as peripheral after notification subscription
+09-09 22:46:05.185 29617 29656 I MCLBENCH: MACHINE candidate ready status=0
+09-09 22:46:05.225 29617 29634 I MCLBENCH: BLE central disconnected
+09-09 22:46:11.193 29617 29656 I MCLBENCH: BLE send refused: candidate is not subscribed
+09-09 22:46:17.200 29617 29656 I MCLBENCH: BLE send refused: candidate is not subscribed
+09-09 22:46:23.209 29617 29656 I MCLBENCH: BLE send refused: candidate is not subscribed
+09-09 22:46:29.212 29617 29656 I MCLBENCH: BLE send refused: candidate is not subscribed
+09-09 22:46:35.221 29617 29656 I MCLBENCH: MACHINE event=4 transport=3 profile=1 peer_ref=EA5BA674 session_ref=BE5E34C4 status=0
+09-09 22:46:35.245 29617 29656 I MCLBENCH: BLE advertising stopped
+09-09 22:46:35.245 29617 29656 I MCLBENCH: BLE scan stopped, matches=1 uuid_only=0
+09-09 22:46:35.247 29617 29656 I MCLBENCH: MACHINE candidate closed transport=3

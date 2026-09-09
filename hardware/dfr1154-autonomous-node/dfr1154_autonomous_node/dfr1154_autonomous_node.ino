@@ -631,7 +631,14 @@ bool listener_prepare() {
  * discarded, which is the truth about what a microphone hears while its own
  * speaker is driven.
  */
+void trace_ap(const char *direction, const uint8_t *bytes, size_t size) {
+    Serial.printf("MCLTRACE ms=%lu AP %s bytes=%u hex=", static_cast<unsigned long>(millis()), direction, static_cast<unsigned>(size));
+    for (size_t i = 0; i < size; ++i) { Serial.printf("%02X", bytes[i]); }
+    Serial.println();
+}
+
 bool emit_payload(const uint8_t *payload, size_t len) {
+    trace_ap("TX_ATTEMPT", payload, len);
     if (!g_speaker_ready) {
         log_line("emit refused: amplifier not ready");
         return false;
@@ -1882,12 +1889,28 @@ void activation_service() {
 }
 
 void machine_pump() {
-    /* Frames that arrived on the candidate while we were elsewhere. */
-    if (g_ble_frame_ready) {
+    /* A notification can arrive before the connect worker publishes WORK_DONE.
+       Keep the bounded mailbox occupied until activation_service has made the
+       candidate ready. Otherwise receive can invoke policy while send still
+       reports no link, or consume awaiting_candidate before readiness. */
+    static bool deferred_frame_logged = false;
+    if (g_ble_frame_ready && g_machine.awaiting_candidate != 0u) {
+        if (!deferred_frame_logged) {
+            log_line("BLE RX deferred until candidate ready ms=%lu bytes=%u worker=%d",
+                     static_cast<unsigned long>(millis()),
+                     static_cast<unsigned>(g_ble_frame_size),
+                     g_activation_work.load(std::memory_order_acquire));
+            deferred_frame_logged = true;
+        }
+    }
+    if (g_ble_frame_ready && g_ble_connected &&
+        g_machine.awaiting_candidate == 0u &&
+        g_activation_work.load(std::memory_order_acquire) == WORK_IDLE) {
         (void)mcl_machine_receive(&g_machine, MCL_CONTACT_TRANSPORT_BLE,
                                   g_ble_frame, g_ble_frame_size);
         g_ble_frame_ready = false;
     }
+    if (!g_ble_frame_ready) { deferred_frame_logged = false; }
 
     ble_scan_pump();
     if (g_candidate_active && g_scan_hit.load() &&
@@ -2146,6 +2169,7 @@ void scenario_rendezvous_tick() {
         if (r == MCL_AP_LISTEN_CONTACT) {
             ++g_counters.frames_recovered;
             log_line("CONTACT %u bytes", static_cast<unsigned>(event.payload_bytes));
+            trace_ap("RX", payload, event.payload_bytes);
             (void)mcl_machine_receive(&g_machine, MCL_CONTACT_TRANSPORT_AP,
                                       payload, event.payload_bytes);
         } else if (r == MCL_AP_LISTEN_HEARD) {

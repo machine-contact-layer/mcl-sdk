@@ -1,0 +1,62 @@
+180176.617 WINDOWS source_ref=405DB73A provenance=LOCAL deployment=MCL-REFERENCE-DEPLOYMENT-1
+180176.617 WINDOWS dll_sha256=9e94ef1a60316e816edbd60c35dfd009b6b71e062fd24c9a79232333e568bf7b
+{
+  "samples": 5566464,
+  "events": [
+    {
+      "polled_at_sample": 96256,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 329728,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 581632,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 972800,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 1351680,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 1789952,
+      "result": "CONTACT",
+      "hex": "10023a87c6f90000013c"
+    },
+    {
+      "polled_at_sample": 2265088,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 2668544,
+      "result": "CONTACT",
+      "hex": "10023a87c6f90000013c"
+    },
+    {
+      "polled_at_sample": 3131392,
+      "result": "CONTACT",
+      "hex": "10023a87c6f90000013c"
+    },
+    {
+      "polled_at_sample": 3497984,
+      "result": "CONTACT",
+      "hex": "10023a87c6f90000013c"
+    },
+    {
+      "polled_at_sample": 3923968,
+      "result": "CONTACT",
+      "hex": "10023a87c6f90000013c"
+    }
+  ]
+}

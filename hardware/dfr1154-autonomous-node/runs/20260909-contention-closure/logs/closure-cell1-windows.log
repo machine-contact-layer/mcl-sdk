@@ -1,0 +1,22 @@
+178632.864 WINDOWS source_ref=6AFFDE97 provenance=LOCAL deployment=MCL-REFERENCE-DEPLOYMENT-1
+178632.864 WINDOWS dll_sha256=9e94ef1a60316e816edbd60c35dfd009b6b71e062fd24c9a79232333e568bf7b
+178632.929 WINDOWS AUDIO input_latency=0.08533333333333333 device=Microphone Array (Realtek(R) Audio)
+178632.929 WINDOWS MACHINE start status=0 input=18 output=14
+178632.930 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178637.482 WINDOWS AP RX bytes=17 hex=180249ee5ee7fcad57bc0301756b52a53c contacts=1
+178639.737 WINDOWS AP TX bytes=16 hex=180a6affde97fcad57bc0301a0af351f samples=65280
+178641.294 WINDOWS CANDIDATE open transport=3 profile=1 peer_token=756B52A5 local_token=00000000
+178641.872 WINDOWS BLE activation failed BleakError: Thread is configured for Windows GUI but callbacks are not working.
+178641.872 WINDOWS CANDIDATE close transport=3
+178641.872 WINDOWS CANDIDATE refused status=0
+178641.878 WINDOWS MACHINE event=6 transport=0 profile=0 peer_ref=00000000 session_ref=00000000 status=3 poll=0
+178645.373 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178654.783 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178664.671 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178672.811 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178682.452 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178693.604 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178703.248 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178715.401 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178723.049 WINDOWS AP TX bytes=10 hex=10026affde970000013c samples=57600
+178752.940 WINDOWS RESULT state=IDLE established=0 audio_drops=0 fragment_rejections=0 max_audio_queue_ms=1608.6

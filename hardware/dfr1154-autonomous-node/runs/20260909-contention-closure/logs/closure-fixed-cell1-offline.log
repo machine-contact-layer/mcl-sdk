@@ -1,0 +1,147 @@
+179449.748 WINDOWS source_ref=2C4F4875 provenance=LOCAL deployment=MCL-REFERENCE-DEPLOYMENT-1
+179449.749 WINDOWS dll_sha256=9e94ef1a60316e816edbd60c35dfd009b6b71e062fd24c9a79232333e568bf7b
+{
+  "samples": 5758976,
+  "events": [
+    {
+      "polled_at_sample": 67584,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 456704,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 534528,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 546816,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 919552,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 933888,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 1058816,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 1288192,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 1519616,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 1658880,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 1959936,
+      "result": "CONTACT",
+      "hex": "1002964ff9370000013c"
+    },
+    {
+      "polled_at_sample": 2029568,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 2373632,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 2400256,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 2412544,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 2789376,
+      "result": "CONTACT",
+      "hex": "10021aa858a60000013c"
+    },
+    {
+      "polled_at_sample": 2934784,
+      "result": "CONTACT",
+      "hex": "1802964ff9377bffd151030128ee36773c"
+    },
+    {
+      "polled_at_sample": 3151872,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 3328000,
+      "result": "CONTACT",
+      "hex": "10021aa858a60000013c"
+    },
+    {
+      "polled_at_sample": 3864576,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 4265984,
+      "result": "CONTACT",
+      "hex": "10021aa858a60000013c"
+    },
+    {
+      "polled_at_sample": 4696064,
+      "result": "CONTACT",
+      "hex": "1002964ff9370000013c"
+    },
+    {
+      "polled_at_sample": 4780032,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 5031936,
+      "result": "CONTACT",
+      "hex": "180a964ff9372e0039f703014eb45279"
+    },
+    {
+      "polled_at_sample": 5142528,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 5263360,
+      "result": "CONTACT",
+      "hex": "180a964ff9372e0039f703014eb45279"
+    },
+    {
+      "polled_at_sample": 5507072,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 5603328,
+      "result": "CONTACT",
+      "hex": "180a964ff9372e0039f703014eb45279"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+MSBuild version 17.14.40+3e7442088 for .NET Framework
+
+  1>Checking Build System
+  mcl_ap_channel.vcxproj -> C:\Users\marsm\Downloads\mcl\tmp\audit-20260909-android\windows-build\ap\Release\mcl_ap_channel.lib
+  mcl_ap_modem.vcxproj -> C:\Users\marsm\Downloads\mcl\tmp\audit-20260909-android\windows-build\ap\Release\mcl_ap_modem.lib
+  mcl_ap_listen.vcxproj -> C:\Users\marsm\Downloads\mcl\tmp\audit-20260909-android\windows-build\ap\Release\mcl_ap_listen.lib
+  mcl_link_dep.vcxproj -> C:\Users\marsm\Downloads\mcl\tmp\audit-20260909-android\windows-build\sdk\Release\mcl_link_dep.lib
+  mcl_wire_dep.vcxproj -> C:\Users\marsm\Downloads\mcl\tmp\audit-20260909-android\windows-build\sdk\Release\mcl_wire_dep.lib
+  mcl_sdk.vcxproj -> C:\Users\marsm\Downloads\mcl\tmp\audit-20260909-android\windows-build\sdk\Release\mcl_sdk.lib
+  Building Custom Rule C:/Users/marsm/Downloads/mcl/mcl-sdk/hardware/windows-bench/CMakeLists.txt
+  mcl_windows_bench.vcxproj -> C:\Users\marsm\Downloads\mcl\tmp\audit-20260909-android\windows-build\Release\mcl_windows_bench.dll
+  Building Custom Rule C:/Users/marsm/Downloads/mcl/mcl-sdk/hardware/windows-bench/CMakeLists.txt

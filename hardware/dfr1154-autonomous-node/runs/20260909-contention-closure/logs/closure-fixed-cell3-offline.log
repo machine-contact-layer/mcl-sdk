@@ -1,0 +1,67 @@
+179661.898 WINDOWS source_ref=3562F910 provenance=LOCAL deployment=MCL-REFERENCE-DEPLOYMENT-1
+179661.898 WINDOWS dll_sha256=9e94ef1a60316e816edbd60c35dfd009b6b71e062fd24c9a79232333e568bf7b
+{
+  "samples": 5615616,
+  "events": [
+    {
+      "polled_at_sample": 131072,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 206848,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 499712,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 618496,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 1130496,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 1556480,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 2091008,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 2590720,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 3084288,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 3491840,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 3868672,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    },
+    {
+      "polled_at_sample": 4331520,
+      "result": "HEARD_UNRECOVERED",
+      "hex": null
+    }
+  ]
+}

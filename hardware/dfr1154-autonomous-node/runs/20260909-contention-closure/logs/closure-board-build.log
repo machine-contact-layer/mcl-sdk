@@ -1,0 +1,45 @@
+=== MCL autonomous node firmware ===
+root:   C:\Users\marsm\Downloads\mcl
+factory backup present
+
+Staged protocol sources (sha256):
+  8620F5A4FF5577E8  wire.h
+  A3A2536ABE8F756D  link.h
+  539367E64F380A29  contact.h
+  5EFAAE673A793233  handoff.h
+  3D65F82D27BC52ED  control.h
+  B50F53B77908E0ED  negotiation.h
+  3BC270DEC2C2E511  endpoint_rendezvous.h
+  DF4E57F1AF5D947B  extension.h
+  D08E7F2104F8E4A7  ap_modem.h
+  A828F3B3A50FD897  ap_listen.h
+  9B6ACD8EB33809A9  sdk.h
+  E08FB2DDA5123579  rendezvous.h
+  AAFC10B5C704506E  machine.h
+  83E7610BD336AE43  ble_binding.h
+  CED60C7E583D5423  ip_binding.h
+  7CDB80D6FCD3A7F2  wire.c
+  2EED0537DD054388  link.c
+  E602F132F80A290A  contact.c
+  36702CD8949E7DD9  handoff.c
+  F515ABF3E0109CD1  control.c
+  BDE6DDE245C9F76C  negotiation.c
+  A7CE9B364D01797C  endpoint_rendezvous.c
+  B4FBAD330F069F51  extension.c
+  66D8F827A41293B9  ap_modem.c
+  70074817552F3F61  ap_listen.c
+  5B0E8F772B579B5F  sdk.c
+  3741768FDE2558AF  rendezvous.c
+  24A3A5081FCFCE22  machine.c
+  FC578E8A5033BBF1  ble_binding.c
+  49C83A8D743CB03A  ip_binding.c
+
+Compiling for esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi
+Sketch uses 1275975 bytes (40%) of program storage space. Maximum is 3145728 bytes.
+Global variables use 227800 bytes (69%) of dynamic memory, leaving 99880 bytes for local variables. Maximum is 327680 bytes.
+
+APP_IMAGE=C:\Users\marsm\Downloads\mcl\mcl-sdk\hardware\dfr1154-autonomous-node\build\out\mcl-auto-node-staging.ino.bin
+APP_SHA256=C0D69F3EB615553E4050871CA7FB95C81527835D8E83A7A87386D106E319D428
+APP_BYTES=1276128
+
+Not flashed. Run flash-app-only.ps1 to write the application partition.

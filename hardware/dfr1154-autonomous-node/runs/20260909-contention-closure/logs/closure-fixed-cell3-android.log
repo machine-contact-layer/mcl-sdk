@@ -1,0 +1,29 @@
+--------- beginning of main
+09-09 22:52:13.363 29617 29617 I MCLBENCH: > machine start responder
+09-09 22:52:13.397 29617 29656 I MCLBENCH: AUDIO capture open, source=VOICE_RECOGNITION rate=48000
+09-09 22:52:13.397 29617 29656 I MCLBENCH: MACHINE started source_ref is local; poll_ms=10
+09-09 22:52:16.446 29617 29656 I MCLBENCH: MACHINE event=1 transport=1 profile=0 peer_ref=B9A8081E session_ref=00000000 status=0
+09-09 22:52:20.003 29617 29656 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 22:52:20.088 29617 29656 I MCLBENCH: AUDIO track PLAYING play_state=3 session=17161
+09-09 22:52:21.667 29617 29656 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 22:52:27.445 29617 29656 I MCLBENCH: BLE ready advertiser=true scanner=true multi_adv=true
+09-09 22:52:27.467 29617 29656 I MCLBENCH: BLE GATT server up, MCL-RX write / MCL-TX notify
+09-09 22:52:27.472 29617 29656 I MCLBENCH: BLE advertising token=74F88587 beacon=0000000074F88587
+09-09 22:52:27.472 29617 29656 I MCLBENCH: MACHINE BLE-ACTIVATE advertise initiated=true
+09-09 22:52:27.528 29617 29617 I MCLBENCH: BLE advertising started, tx_power=3
+09-09 22:52:28.683 29617 32099 I MCLBENCH: BLE central connected: E8:F6:0A:86:7B:D9
+09-09 22:52:29.380 29617 32099 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 22:52:29.384 29617 32099 I MCLBENCH: BLE candidate ready as peripheral after notification subscription
+09-09 22:52:29.438 29617 29656 I MCLBENCH: MACHINE candidate ready status=0
+09-09 22:52:29.481 29617 29639 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=800812B9A8081E2C207DC7001200026DA2CC7F2C
+09-09 22:52:29.482 29617 29639 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=41207DC7D632A3C38F6BA85546BF90BB
+09-09 22:52:29.482 29617 29639 I MCLBENCH: BLE frame in, 34 bytes
+09-09 22:52:29.492 29617 29656 I MCLBENCH: MACHINE event=2 transport=3 profile=1 peer_ref=B9A8081E session_ref=2C207DC7 status=0 ACTION=machine admit|refuse
+HOST policy admit only after POLICY_REQUIRED; adb_rc=0
+09-09 22:52:30.084 29617 29617 I MCLBENCH: > machine admit
+09-09 22:52:30.131 29617 29656 I MCLBENCH: MACHINE policy admit status=0
+09-09 22:52:30.181 29617 29639 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=800812B9A8081E2C207DC7000A00046DA2CC7F2C
+09-09 22:52:30.182 29617 29639 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=41207DC752FD98CA
+09-09 22:52:30.182 29617 29639 I MCLBENCH: BLE frame in, 26 bytes
+09-09 22:52:30.183 29617 29656 I MCLBENCH: MACHINE event=3 transport=3 profile=1 peer_ref=B9A8081E session_ref=2C207DC7 status=0
+09-09 22:54:14.258 29617 29690 I MCLBENCH: BLE central disconnected
