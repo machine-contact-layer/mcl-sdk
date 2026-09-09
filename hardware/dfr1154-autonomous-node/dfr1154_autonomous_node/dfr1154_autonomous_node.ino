@@ -143,6 +143,7 @@
 #include <WebServer.h>
 #include "ESP_I2S.h"
 #include "esp_heap_caps.h"
+#include "esp_rom_sys.h"
 #include "esp_system.h"
 
 #include <BLEDevice.h>
@@ -737,6 +738,8 @@ uint32_t g_run_cap_mean = 0;
  */
 constexpr size_t kCaptureRingSamples = 131072u;
 int16_t *g_capture_ring = nullptr;
+constexpr size_t kCaptureConsumerSamples = 1024u;
+int16_t *g_capture_consumer_block = nullptr;
 volatile uint32_t g_capture_write = 0;
 volatile uint32_t g_capture_read = 0;
 volatile uint32_t g_capture_dropped = 0;
@@ -827,14 +830,16 @@ void capture_task_main(void *) {
 }
 
 void capture_pump() {
-    if (g_capture_ring == nullptr) { return; }
-    static int16_t block[1024];
+    if (g_capture_ring == nullptr || g_capture_consumer_block == nullptr) { return; }
+    /* Cold handoff staging, copied into the unchanged internal listener arena.
+       Reserve scarce DMA-capable internal RAM for the BLE controller. */
+    int16_t *block = g_capture_consumer_block;
     size_t n;
 
     portENTER_CRITICAL(&g_capture_mux);
     n = static_cast<size_t>(g_capture_write - g_capture_read);
-    if (n > sizeof(block) / sizeof(block[0])) {
-        n = sizeof(block) / sizeof(block[0]);
+    if (n > kCaptureConsumerSamples) {
+        n = kCaptureConsumerSamples;
     }
     if (n != 0u) {
         const size_t at = static_cast<size_t>(g_capture_read)
@@ -890,6 +895,7 @@ const char *ble_role_name(uint8_t r) {
 bool     g_ble_up = false;
 uint8_t  g_ble_role = BLE_ROLE_NONE;
 std::atomic<bool> g_ble_connected{false};
+std::atomic<bool> g_ble_subscribed{false};
 
 BLEServer            *g_server   = nullptr;
 BLECharacteristic    *g_tx_char  = nullptr;   /* peripheral -> central, notify */
@@ -927,16 +933,25 @@ void ble_deliver_frame(const uint8_t *frame, size_t size) {
 
 class NodeServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer *) override {
+        g_ble_subscribed = false;
         g_ble_connected = true;
         mcl_ble_reassembler_reset(&g_reasm);
     }
     void onDisconnect(BLEServer *s) override {
+        g_ble_subscribed = false;
         g_ble_connected = false;
         /* Keep advertising: the activation window may still be open and the
            acceptor is entitled to retry. */
         s->startAdvertising();
     }
 };
+
+class NodeTxCallbacks : public BLECharacteristicCallbacks {
+    void onSubscribe(BLECharacteristic *, ble_gap_conn_desc *, uint16_t sub_value) override {
+        g_ble_subscribed = (sub_value & 1u) != 0u;
+    }
+};
+NodeTxCallbacks g_tx_callbacks;
 
 class NodeRxCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *c) override {
@@ -1096,12 +1111,16 @@ bool g_retry_test_ok = true;
 uint32_t g_retry_test_first_heap = 0;
 uint32_t g_retry_test_first_largest = 0;
 constexpr uint32_t kActivationOperationMs = 30000;
-struct HeapReceipt { uint32_t free_bytes; uint32_t largest; };
+struct HeapReceipt { uint32_t free_bytes, largest, dma_free, dma_largest; };
+bool is_central_diagnostic(uint8_t scenario) { return scenario >= 7u && scenario <= 10u; }
 struct ActivationReceipt {
     HeapReceipt before_create, after_create, before_connect, after_connect, cleanup;
     bool connected, ready, retryable, cleanup_ok;
     uint32_t elapsed_ms, stack_free;
     int gap_status;
+    uint16_t connection_handle, rx_handle, negotiated_mtu;
+    uint8_t diagnostic_fragments;
+    int diagnostic_rc[3];
 };
 ActivationReceipt g_activation_receipt{};
 uint8_t g_connect_addr[6];
@@ -1130,7 +1149,9 @@ int activation_connection_handle() {
 
 HeapReceipt activation_heap() {
     return {static_cast<uint32_t>(ESP.getFreeHeap()),
-            static_cast<uint32_t>(ESP.getMaxAllocHeap())};
+            static_cast<uint32_t>(ESP.getMaxAllocHeap()),
+            static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA)),
+            static_cast<uint32_t>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA))};
 }
 
 int activation_gap_event(ble_gap_event *event, void *) {
@@ -1188,7 +1209,31 @@ void activation_worker(void *) {
                 if (rx != nullptr && tx != nullptr && rx->canWriteNoResponse() &&
                     tx->canNotify() && !g_activation_cancel.load()) {
                     receipt.ready = tx->subscribe(true, client_notify_cb, true);
-                    if (receipt.ready) { g_remote_rx = rx; }
+                    if (receipt.ready) {
+                        g_remote_rx = rx;
+                        receipt.connection_handle = g_client->getConnId();
+                        receipt.rx_handle = rx->getHandle();
+                        receipt.negotiated_mtu = ble_att_mtu(receipt.connection_handle);
+                        /* Configured controls isolate task context and wrapper/native
+                           dispatch. Scenario 9 is NOT BLE-GATT-1 qualification: it
+                           deliberately requests ATT responses for diagnosis. */
+                        if (g_config.scenario >= 8u && g_config.scenario <= 10u) {
+                            uint8_t frame[40], pdu[MCL_BLE_ATT_DEFAULT_MTU];
+                            for (size_t i = 0; i < sizeof(frame); ++i) { frame[i] = static_cast<uint8_t>(i + 1u); }
+                            for (size_t i = 0; i < 3u && !g_activation_cancel.load(); ++i) {
+                                size_t written = 0;
+                                if (mcl_ble_fragment(frame, sizeof(frame), MCL_BLE_ATT_DEFAULT_MTU,
+                                                     i, pdu, sizeof(pdu), &written) != MCL_BLE_OK) { break; }
+                                const int rc = (g_config.scenario == 10u)
+                                    ? ble_gattc_write_no_rsp_flat(receipt.connection_handle, receipt.rx_handle, pdu, written)
+                                    : (rx->writeValue(pdu, written, g_config.scenario == 9u) ? 0 : -1);
+                                receipt.diagnostic_rc[i] = rc;
+                                ++receipt.diagnostic_fragments;
+                                if (rc != 0) { break; }
+                                delay(8);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1236,7 +1281,7 @@ bool ble_stack_up() {
         ble_gap_event_listener_register(&g_gap_listener, activation_gap_event, nullptr) == 0;
     if (!g_gap_listener_registered) {
         log_line("BLE GAP instrumentation registration refused");
-        BLEDevice::deinit(true);
+        BLEDevice::deinit(false);
         g_ble_up = false;
         return false;
     }
@@ -1302,9 +1347,12 @@ void ble_stack_down() {
         (void)ble_gap_event_listener_unregister(&g_gap_listener);
         g_gap_listener_registered = false;
     }
-    BLEDevice::deinit(true);  /* owns the one client allocated by createClient */
+    /* Free stack objects, but keep controller memory reclaimable by init.
+       release_memory=true permanently prevents BLE reinitialization. */
+    BLEDevice::deinit(false);
     g_ble_up = false;
     g_ble_connected = false;
+    g_ble_subscribed = false;
     g_server = nullptr;
     g_tx_char = nullptr;
     g_client = nullptr;
@@ -1340,6 +1388,7 @@ bool ble_become_peripheral(uint32_t own_token) {
 
     g_tx_char = service->createCharacteristic(MCL_TX_CHAR_UUID,
                                               BLECharacteristic::PROPERTY_NOTIFY);
+    g_tx_char->setCallbacks(&g_tx_callbacks);
     /* ESP32 core 3.x uses NimBLE, which creates the 0x2902 client
        configuration descriptor automatically for NOTIFY characteristics.
        Manually allocating a second one is deprecated and can leave two CCCDs
@@ -1504,12 +1553,18 @@ int32_t ble_send_frame(const uint8_t *frame, size_t frame_size) {
             return (i == 0u) ? -1 : 1;
         }
         if (g_ble_role == BLE_ROLE_PERIPHERAL) {
-            if (g_tx_char == nullptr) { return (i == 0u) ? -1 : 1; }
+            if (g_tx_char == nullptr || !g_ble_subscribed) { return (i == 0u) ? -1 : 1; }
             g_tx_char->setValue(pdu, written);
             g_tx_char->notify();
         } else {
             if (g_remote_rx == nullptr) { return (i == 0u) ? -1 : 1; }
-            if (!g_remote_rx->writeValue(pdu, written, false)) {
+            const bool queued = g_remote_rx->writeValue(pdu, written, false);
+            if (is_central_diagnostic(g_config.scenario)) {
+                log_line("BLE TX main fragment=%u bytes=%u conn=%u handle=%u queued=%u",
+                         static_cast<unsigned>(i), static_cast<unsigned>(written),
+                         g_client->getConnId(), g_remote_rx->getHandle(), queued);
+            }
+            if (!queued) {
                 return (i == 0u) ? -1 : 1;
             }
         }
@@ -1648,8 +1703,9 @@ mcl_machine_candidate_t plat_candidate_open(void *, uint8_t transport_id,
         g_candidate_close_pending = g_ble_up;
         return MCL_MACHINE_CANDIDATE_REFUSED;
     }
-    /* A peripheral is reachable the moment it advertises. */
-    return MCL_MACHINE_CANDIDATE_READY;
+    /* Advertisement is discoverability, not usable bidirectional carriage.
+       The main loop publishes ready only after connection and CCCD setup. */
+    return MCL_MACHINE_CANDIDATE_PENDING;
 }
 
 void plat_candidate_close(void *, uint8_t transport_id) {
@@ -1730,9 +1786,11 @@ void machine_start() {
 }
 
 void log_heap_receipt(const char *stage, const HeapReceipt &heap) {
-    log_line("BLE %s heap=%lu largest=%lu", stage,
+    log_line("BLE %s heap=%lu largest=%lu dma=%lu/%lu", stage,
              static_cast<unsigned long>(heap.free_bytes),
-             static_cast<unsigned long>(heap.largest));
+             static_cast<unsigned long>(heap.largest),
+             static_cast<unsigned long>(heap.dma_free),
+             static_cast<unsigned long>(heap.dma_largest));
 }
 
 /* Called even after MCL closes a candidate or the run ends. No worker writes
@@ -1768,13 +1826,27 @@ void activation_service() {
                  static_cast<unsigned long>(receipt.stack_free));
         log_line("BLE cancel_rc=%d terminate_rc=%d gap=-1 means unobserved",
                  g_cancel_status, g_terminate_status);
+        if (is_central_diagnostic(g_config.scenario)) {
+            log_line("BLE TX endpoint conn=%u rx_handle=%u mtu=%u scenario=%u",
+                     receipt.connection_handle, receipt.rx_handle,
+                     receipt.negotiated_mtu, g_config.scenario);
+            if (g_config.scenario >= 8u) {
+                bool sent = receipt.diagnostic_fragments == 3u;
+                for (uint8_t i = 0; i < receipt.diagnostic_fragments; ++i) {
+                    log_line("BLE TX worker fragment=%u rc=%d", i, receipt.diagnostic_rc[i]);
+                    sent = sent && receipt.diagnostic_rc[i] == 0;
+                }
+                if (sent) { ++g_counters.ble_frames_tx; }
+                else { snprintf(g_run_failure, sizeof(g_run_failure), "worker diagnostic TX refused"); }
+            }
+        }
         g_activation_work.store(WORK_IDLE, std::memory_order_release);
         if (g_config.scenario == 6u && g_run_state == RUN_RUNNING) {
             ++g_retry_test_completions;
             g_retry_test_ok = g_retry_test_ok && !receipt.connected && !receipt.ready &&
                 receipt.cleanup_ok && g_client_creations == 1u && g_connect_loop_ticks > 10u;
             g_retry_test_next_ms = millis() + 1000u;
-        } else if (g_config.scenario == 7u && g_run_state == RUN_RUNNING) {
+        } else if (is_central_diagnostic(g_config.scenario) && g_run_state == RUN_RUNNING) {
             g_ble_connected = g_candidate_active && !g_activation_cancel.load() && receipt.ready;
             if (!g_ble_connected) {
                 g_candidate_active = false;
@@ -1799,6 +1871,13 @@ void activation_service() {
     if (g_candidate_close_pending && g_activation_work.load() == WORK_IDLE) {
         ble_stack_down();
         if (!g_ble_up) { g_candidate_close_pending = false; }
+    }
+    if (g_candidate_active && g_ble_role == BLE_ROLE_PERIPHERAL &&
+        g_ble_connected && g_ble_subscribed && g_machine.awaiting_candidate != 0u) {
+        log_line("BLE peripheral ready after notification subscription");
+        if (mcl_machine_candidate_ready(&g_machine) != MCL_MACHINE_OK) {
+            plat_candidate_close(nullptr, MCL_CONTACT_TRANSPORT_BLE);
+        }
     }
 }
 
@@ -2250,13 +2329,13 @@ void scenario_central_diagnostic_tick() {
     }
     uint8_t expected[40];
     for (size_t i = 0; i < sizeof(expected); ++i) { expected[i] = static_cast<uint8_t>(i + 1u); }
-    if (g_ble_connected && !g_central_test_sent) {
+    if (g_config.scenario == 7u && g_ble_connected && !g_central_test_sent) {
         g_central_test_sent = true;
         if (ble_send_frame(expected, sizeof(expected)) != 0) {
             scenario_end(RUN_FAILED, "central diagnostic send refused");
         }
     }
-    if (g_ble_frame_ready) {
+    if (g_ble_connected && g_activation_work.load() == WORK_IDLE && g_ble_frame_ready) {
         const bool exact = g_ble_frame_size == sizeof(expected) &&
                            memcmp(g_ble_frame, expected, sizeof(expected)) == 0;
         g_ble_frame_ready = false;
@@ -2635,10 +2714,10 @@ void scenario_start() {
     g_run_cap_mean = 0;
     g_last_poll_pushed = 0;
     schedule_next_announce();
-    g_capture_active = (g_config.scenario < 3u || g_config.scenario == 6u || g_config.scenario == 7u);
+    g_capture_active = (g_config.scenario < 3u || g_config.scenario == 6u || is_central_diagnostic(g_config.scenario));
 
     g_diag_started = false;
-    const bool needs_ble = (g_config.scenario == 4u || g_config.scenario == 5u || g_config.scenario == 6u || g_config.scenario == 7u ||
+    const bool needs_ble = (g_config.scenario == 4u || g_config.scenario == 5u || g_config.scenario == 6u || is_central_diagnostic(g_config.scenario) ||
                             (g_config.scenario == 2u &&
                              g_config.candidate_transport == MCL_CONTACT_TRANSPORT_BLE));
     if (g_config.quiesce_wifi || needs_ble) {
@@ -2785,7 +2864,7 @@ void scenario_end(uint8_t final_state, const char *why) {
 
 void scenario_tick() {
     if (static_cast<int32_t>(millis() - (g_run_started_ms + g_config.duration_ms)) >= 0) {
-        if (g_config.scenario == 6u || g_config.scenario == 7u) {
+        if (g_config.scenario == 6u || is_central_diagnostic(g_config.scenario)) {
             scenario_end(RUN_FAILED, "diagnostic deadline expired");
         } else { scenario_end(RUN_DONE, nullptr); }
         return;
@@ -2793,7 +2872,7 @@ void scenario_tick() {
 
     /* Scenario 3 is on Wi-Fi and scenarios 4-5 are BLE diagnostics; neither
        has any use for the microphone, and polling it would only cost time. */
-    if (g_config.scenario < 3u || g_config.scenario == 6u || g_config.scenario == 7u) { capture_pump(); }
+    if (g_config.scenario < 3u || g_config.scenario == 6u || is_central_diagnostic(g_config.scenario)) { capture_pump(); }
 
     switch (g_config.scenario) {
         case 0: scenario_listen_tick(); break;
@@ -2803,7 +2882,7 @@ void scenario_tick() {
         case 4: scenario_ble_diagnostic_tick(true); break;
         case 5: scenario_ble_diagnostic_tick(false); break;
         case 6: scenario_retry_diagnostic_tick(); break;
-        case 7: scenario_central_diagnostic_tick(); break;
+        case 7: case 8: case 9: case 10: scenario_central_diagnostic_tick(); break;
         default:
             scenario_end(RUN_FAILED, "unknown scenario");
             break;
@@ -2998,7 +3077,15 @@ void serial_pump() {
 
 /* ------------------------------------------------------------------ boot */
 
+void allocation_failure_receipt(size_t requested, uint32_t caps, const char *function_name) {
+    /* ROM output does not allocate; allocation-failure callbacks must not
+       recurse through the heap or the application log ring. */
+    esp_rom_printf("MCL_ALLOC_FAIL bytes=%u caps=%08x function=%s\n",
+                   static_cast<unsigned>(requested), static_cast<unsigned>(caps), function_name);
+}
+
 void setup() {
+    heap_caps_register_failed_alloc_callback(allocation_failure_receipt);
     pinMode(kActivityLedPin, OUTPUT);
     digitalWrite(kActivityLedPin, LOW);
 
@@ -3066,6 +3153,12 @@ void setup() {
     if (ESP.getPsramSize() != 0u) {
         g_capture_ring = static_cast<int16_t *>(
             ps_malloc(kCaptureRingSamples * sizeof(int16_t)));
+        g_capture_consumer_block = static_cast<int16_t *>(
+            ps_malloc(kCaptureConsumerSamples * sizeof(int16_t)));
+    }
+    if (g_capture_consumer_block == nullptr) {
+        Serial.println("MCLAUTO FATAL PSRAM_CAPTURE_STAGING_UNAVAILABLE");
+        for (;;) { delay(1000); }
     }
     if (g_capture_ring == nullptr) {
         Serial.println("MCLAUTO FATAL PSRAM_CAPTURE_QUEUE_UNAVAILABLE");
