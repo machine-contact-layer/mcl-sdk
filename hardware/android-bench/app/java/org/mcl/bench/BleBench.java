@@ -82,6 +82,7 @@ public final class BleBench {
     private BluetoothDevice connectedCentral;
     private BluetoothGatt clientGatt;
     private BluetoothGattCharacteristic remoteRx;
+    private volatile boolean candidateReady;
 
     private byte[] wantedBeacon;
     private int scanMatches;
@@ -249,7 +250,7 @@ public final class BleBench {
                 }
                 if (sameUuid) {
                     uuidSeen[0] = true;
-                    if (wantBeacon != null && valueLen >= 16 + wantBeacon.length) {
+                    if (wantBeacon != null && valueLen == 16 + wantBeacon.length) {
                         boolean sameBeacon = true;
                         for (int k = 0; k < wantBeacon.length; k++) {
                             if (payload[valueOffset + 16 + k] != wantBeacon[k]) {
@@ -329,7 +330,8 @@ public final class BleBench {
             new BluetoothGattServerCallback() {
         @Override
         public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
-            if (newState == BluetoothGatt.STATE_CONNECTED) {
+            candidateReady = false;
+            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothGatt.STATE_CONNECTED) {
                 connectedCentral = device;
                 resetReassembly();
                 log.line("BLE central connected: " + device.getAddress());
@@ -344,6 +346,10 @@ public final class BleBench {
                                                  BluetoothGattCharacteristic characteristic,
                                                  boolean preparedWrite, boolean responseNeeded,
                                                  int offset, byte[] value) {
+            log.line("BLE ATT write uuid=" + characteristic.getUuid()
+                     + " offset=" + offset + " prepared=" + preparedWrite
+                     + " response=" + responseNeeded + " bytes="
+                     + (value == null ? "null" : hex(value)));
             if (RX_CHAR_UUID.equals(characteristic.getUuid())) {
                 acceptFragment(value);
             }
@@ -358,9 +364,22 @@ public final class BleBench {
                                              BluetoothGattDescriptor descriptor,
                                              boolean preparedWrite, boolean responseNeeded,
                                              int offset, byte[] value) {
+            log.line("BLE ATT descriptor uuid=" + descriptor.getUuid()
+                     + " offset=" + offset + " prepared=" + preparedWrite
+                     + " response=" + responseNeeded + " bytes="
+                     + (value == null ? "null" : hex(value)));
+            final boolean enable = CCCD_UUID.equals(descriptor.getUuid())
+                    && TX_CHAR_UUID.equals(descriptor.getCharacteristic().getUuid())
+                    && !preparedWrite && offset == 0 && value != null
+                    && value.length == 2 && value[0] == 1 && value[1] == 0;
+            boolean acknowledged = server != null;
             if (responseNeeded && server != null) {
-                server.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS,
-                                    offset, null);
+                acknowledged = server.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS,
+                                                    offset, null);
+            }
+            candidateReady = enable && acknowledged && device.equals(connectedCentral);
+            if (candidateReady) {
+                log.line("BLE candidate ready as peripheral after notification subscription");
             }
         }
     };
@@ -405,17 +424,21 @@ public final class BleBench {
     private final BluetoothGattCallback clientCallback = new BluetoothGattCallback() {
         @Override
         public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
-            if (newState == BluetoothGatt.STATE_CONNECTED) {
+            if (gatt != clientGatt) { return; }
+            candidateReady = false;
+            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothGatt.STATE_CONNECTED) {
                 log.line("BLE connected as central, discovering");
                 resetReassembly();
                 gatt.discoverServices();
             } else {
+                remoteRx = null;
                 log.line("BLE central link down, status=" + status);
             }
         }
 
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+            if (gatt != clientGatt || status != BluetoothGatt.GATT_SUCCESS) { return; }
             final BluetoothGattService service = gatt.getService(SERVICE_UUID);
             if (service == null) {
                 log.line("BLE peer has no MCL service");
@@ -428,19 +451,25 @@ public final class BleBench {
                 log.line("BLE peer is missing a characteristic");
                 return;
             }
-            gatt.setCharacteristicNotification(remoteTx, true);
+            if (!gatt.setCharacteristicNotification(remoteTx, true)) { return; }
             final BluetoothGattDescriptor cccd = remoteTx.getDescriptor(CCCD_UUID);
             if (cccd != null) {
                 cccd.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                gatt.writeDescriptor(cccd);
+                if (!gatt.writeDescriptor(cccd)) { log.line("BLE subscription write refused"); }
             }
-            log.line("BLE candidate open as central");
+        }
+
+        @Override
+        public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
+            if (gatt != clientGatt || !CCCD_UUID.equals(descriptor.getUuid())) { return; }
+            candidateReady = status == BluetoothGatt.GATT_SUCCESS && remoteRx != null;
+            log.line("BLE candidate subscription status=" + status + " ready=" + candidateReady);
         }
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt,
                                             BluetoothGattCharacteristic characteristic) {
-            if (TX_CHAR_UUID.equals(characteristic.getUuid())) {
+            if (gatt == clientGatt && TX_CHAR_UUID.equals(characteristic.getUuid())) {
                 acceptFragment(characteristic.getValue());
             }
         }
@@ -509,6 +538,10 @@ public final class BleBench {
      * completely untested; the minimum is the case the scheme has to survive.
      */
     public boolean sendFrame(byte[] frame) {
+        if (!candidateReady) {
+            log.line("BLE send refused: candidate is not subscribed");
+            return false;
+        }
         final int per = ATT_DEFAULT_MTU - ATT_HEADER - 1;
         final int total = Math.max(1, (frame.length + per - 1) / per);
         if (total > 64) {
@@ -558,6 +591,7 @@ public final class BleBench {
     }
 
     public void stop() {
+        candidateReady = false;
         stopAdvertising();
         stopScan();
         if (clientGatt != null) {
@@ -587,7 +621,7 @@ public final class BleBench {
     }
 
     public boolean isLinked() {
-        return connectedCentral != null || remoteRx != null;
+        return candidateReady;
     }
 
     public static String hex(byte[] data) {
