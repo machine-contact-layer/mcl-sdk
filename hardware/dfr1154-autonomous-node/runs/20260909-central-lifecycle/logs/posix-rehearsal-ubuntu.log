@@ -1,0 +1,68 @@
+=== MCL release rehearsal ===
+root: /mnt/c/Users/marsm/Downloads/mcl
+
+-- the eight repositories are at their release commits
+   mcl-core  99d6d1b
+   mcl-wire  b085fe0
+   mcl-link  dbe9cfe
+   mcl-sdk   4412f6e
+   mcl-ap    c0a975d
+   mcl-ip    8b0fdaa
+   mcl-ble   28fbdb2
+   mcl-uwb   bfcf2d3
+
+local gates (GCC/Clang/sanitizers/cross)   PASS
+test harnesses cannot run a stale binary   PASS
+C4 cross-implementation                    PASS
+C5 profile interoperability                PASS
+BLE probe verdict regressions              PASS
+installable package + external consumer    PASS
+public API surface                         PASS
+registry governance                        PASS
+specification index                        PASS
+specification maturity                     PASS
+AP-BOOTSTRAP-1 vectors, both receivers     PASS
+feature traceability                       PASS
+deployment profiles                        PASS
+reference deployment: document vs SDK      PASS
+clean-checkout adoption path               FAIL
+            subprocess.CalledProcessError: Command '['git', '-C', '/tmp/tmp.UAxDr64uE8/tree/mcl-core', 'rev-parse', 'HEAD']' returned non-zero exit status 128.
+        QUICKSTART 04: run two machines
+          reached CONTACT ESTABLISHED
+          and states what it did not establish
+        QUICKSTART 07: conformance an adopter can run
+          C4 independent implementation ok
+          reference deployment agrees with the SDK
+        no developer-local paths in the exported tree
+          none
+      
+      ADOPTION PATH FAILED
+      
+      Treat this as a v1 defect. The remedy is the SDK facade, the adapters,
+      the documentation or the packaging -- not new protocol surface, unless
+      the failure proves the existing protocol contract insufficient.
+provenance and licensing                   PASS
+go/no-go audit                             PASS
+publication readiness                      PASS
+release bundle reconstruction              FAIL
+        ok   mcl-ap/conformance/vectors/01-presence-10b.wav
+        ok   mcl-ap/conformance/vectors/02-transport-accept-16b.wav
+        ok   mcl-ap/conformance/vectors/03-transport-offer-17b.wav
+        ok   mcl-ap/conformance/vectors/04-refuse-bad-crc.wav
+        ok   mcl-ap/conformance/vectors/05-refuse-zero-length.wav
+        ok   mcl-ap/conformance/vectors/06-refuse-length-over-cap.wav
+        ok   mcl-ap/conformance/vectors/07-refuse-truncated.wav
+        ok   mcl-ap/conformance/vectors/08-refuse-no-preamble.wav
+        ok   mcl-ap/conformance/vectors/09-refuse-silence.wav
+      
+      -- bundled developer SDK builds and runs its contract test
+        FAIL developer SDK archive is missing
+      
+      2 reconstruction failure(s).
+      RECONSTRUCTION FAILED
+
+=== SUMMARY ===
+17 passed
+FAILED: clean-checkout adoption path release bundle reconstruction
+
+REHEARSAL FAILED

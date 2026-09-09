@@ -1,0 +1,2 @@
+The complete phone bugreports and HCI capture remain in local tmp and are not included: they contain unrelated device information.
+MCL HCI raw capture SHA256: 4ea082cd2ce5114de91861ce3e7e512e3e483acb5de5b1894cf424ad6b0532f4

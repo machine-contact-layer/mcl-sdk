@@ -1,0 +1,45 @@
+--------- beginning of main
+09-09 05:28:02.182 19212 19212 I MCLBENCH: MCL bench up
+09-09 05:28:02.183 19212 19212 I MCLBENCH: native: wire_major=1 link_major=1 scratch=76912 modem_max_payload=64
+09-09 05:28:02.183 19212 19212 I MCLBENCH: source_ref=5DA1E64A provenance=LOCAL
+09-09 05:28:02.183 19212 19212 I MCLBENCH: commands: adb shell am broadcast -a org.mcl.bench.CMD --es cmd "..."
+09-09 05:28:02.183 19212 19212 I MCLBENCH:   emit <PRESENCE|OFFER|ACCEPT> [gain_pct]
+09-09 05:28:02.183 19212 19212 I MCLBENCH:   ladder <lo> <hi> [reps]
+09-09 05:28:02.183 19212 19212 I MCLBENCH:   band <lo> <hi>    listen <ms>    stop
+09-09 05:28:02.183 19212 19212 I MCLBENCH:   ble on|off    adv <tokenhex>    scan <tokenhex>    blesend <hex>
+09-09 05:28:02.183 19212 19212 I MCLBENCH:   machine start <initiator|responder> | admit | refuse | stop
+09-09 05:28:05.148 19212 19212 I MCLBENCH: > machine start initiator
+09-09 05:28:05.191 19212 19241 I MCLBENCH: AUDIO capture open, source=VOICE_RECOGNITION rate=48000
+09-09 05:28:05.192 19212 19241 I MCLBENCH: MACHINE started source_ref is local; poll_ms=10
+09-09 05:28:06.793 19212 19241 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 05:28:06.883 19212 19241 I MCLBENCH: AUDIO track PLAYING play_state=3 session=12257
+09-09 05:28:08.247 19212 19241 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 05:28:13.540 19212 19241 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 05:28:13.629 19212 19241 I MCLBENCH: AUDIO track PLAYING play_state=3 session=12265
+09-09 05:28:15.013 19212 19241 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 05:28:19.504 19212 19241 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 05:28:19.581 19212 19241 I MCLBENCH: AUDIO track PLAYING play_state=3 session=12273
+09-09 05:28:20.952 19212 19241 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 05:28:26.539 19212 19241 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 05:28:26.625 19212 19241 I MCLBENCH: AUDIO track PLAYING play_state=3 session=12281
+09-09 05:28:27.989 19212 19241 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 05:28:32.920 19212 19241 I MCLBENCH: AUDIO play START requested=65280 duration_ms=1360 peak=32767 rms=16858 gain=1.0 state=1 buffer_frames=65280
+09-09 05:28:32.999 19212 19241 I MCLBENCH: AUDIO track PLAYING play_state=3 session=12289
+09-09 05:28:34.526 19212 19241 I MCLBENCH: AUDIO played 65280 samples head=65280 underruns=1 gain=1.0
+09-09 05:28:34.535 19212 19241 I MCLBENCH: BLE ready advertiser=true scanner=true multi_adv=true
+09-09 05:28:34.547 19212 19241 I MCLBENCH: BLE scanning for token=69E6E3F5 beacon=0000000069E6E3F5
+09-09 05:28:34.547 19212 19241 I MCLBENCH: MACHINE BLE-ACTIVATE scan initiated=true
+09-09 05:28:35.754 19212 19212 I MCLBENCH: BLE scan MATCH addr=E8:F6:0A:86:7B:D9 rssi=-26 raw=1921656C626C636D004C434D0100006C636D0000000069E6E3F5000000000000000000000000000000000000000000000000000000000000000000000000
+09-09 05:28:35.759 19212 19212 I MCLBENCH: BLE scan stopped, matches=1 uuid_only=0
+09-09 05:28:35.766 19212 19212 I MCLBENCH: BLE connecting to E8:F6:0A:86:7B:D9
+09-09 05:28:36.701 19212 19228 I MCLBENCH: BLE connected as central, discovering
+09-09 05:28:37.387 19212 19224 I MCLBENCH: BLE candidate subscription status=0 ready=true
+09-09 05:28:37.394 19212 19241 I MCLBENCH: MACHINE candidate ready status=0
+09-09 05:28:37.398 19212 19224 I MCLBENCH: BLE frame in, 34 bytes
+09-09 05:28:37.400 19212 19241 I MCLBENCH: MACHINE event=2 transport=3 profile=1 peer_ref=F5FB9B72 session_ref=E1C66C53 status=0 ACTION=machine admit|refuse
+HOST policy admit only after POLICY_REQUIRED; adb_rc=0
+09-09 05:28:38.345 19212 19212 I MCLBENCH: > machine admit
+09-09 05:28:38.394 19212 19241 I MCLBENCH: MACHINE policy admit status=0
+09-09 05:28:38.461 19212 19228 I MCLBENCH: BLE frame in, 26 bytes
+09-09 05:28:38.509 19212 19241 I MCLBENCH: MACHINE event=3 transport=3 profile=1 peer_ref=F5FB9B72 session_ref=E1C66C53 status=0
+09-09 05:29:41.222 19212 19228 I MCLBENCH: BLE central link down, status=19

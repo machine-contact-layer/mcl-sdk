@@ -1,0 +1,29 @@
+117366.542 WINDOWS source_ref=6EB3749C provenance=LOCAL deployment=MCL-REFERENCE-DEPLOYMENT-1
+117366.542 WINDOWS dll_sha256=2b5833402312bc057cfab17ec53057aec2ff445c1eeb904463766cd3327b249f
+117366.567 WINDOWS BLE activation failed TypeError: Invalid parameter count
+117366.567 WINDOWS CANDIDATE refused status=3
+python : Traceback (most recent call last):
+At line:16 char:102
++ ... oding UTF8; python tmp/audit-20260909-android/windows-advert-prefligh ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Users\marsm\Downloads\mcl\tmp\audit-20260909-android\windows-advert-preflight.py", line 13, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python314\Lib\asyncio\base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "C:\Users\marsm\Downloads\mcl\tmp\audit-20260909-android\windows-advert-preflight.py", line 11, in main
+    await b.close_radio()
+  File "C:\Users\marsm\Downloads\mcl\mcl-sdk/hardware/windows-bench\bench.py", line 153, in close_radio
+    provider.stop_advertising()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+OSError: [WinError -2147483634] A method was called at an unexpected time.

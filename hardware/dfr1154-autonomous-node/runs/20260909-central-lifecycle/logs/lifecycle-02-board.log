@@ -1,0 +1,105 @@
+MCLAUTO CONFIG ok scenario=2 dur=90000 band=0/0 gain=100 cand=3 admit=1
+MCLAUTO ARMED restarting into the run
+MCLAUTO armed scenario=2, restarting into the run
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0xc (RTC_SW_CPU_RST),boot:0x9 (SPI_FAST_FLASH_BOOT)
+Saved PC:0x4037ff72
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x16d0
+load:0x403c8700,len:0x4
+load:0x403c8704,len:0xec8
+load:0x403cb700,len:0x3160
+entry 0x403c8950
+I (26) boot: ESP-IDF ccd00fb1 2nd stage bootloader
+I (26) boot: compile time Aug 26 2026 15:18:58
+I (26) boot: Multicore bootloader
+I (27) boot: chip revision: v0.2
+I (29) boot: efuse block revision: v1.4
+I (33) qio_mode: Enabling QIO for flash chip WinBond
+I (38) boot.esp32s3: Boot SPI Speed : 80MHz
+I (41) boot.esp32s3: SPI Mode       : QIO
+I (45) boot.esp32s3: SPI Flash Size : 16MB
+I (49) boot: Enabling RNG early entropy source...
+I (54) boot: Partition Table:
+I (56) boot: ## Label            Usage          Type ST Offset   Length
+I (62) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (69) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (76) boot:  2 factory          factory app      00 00 00020000 00400000
+I (82) boot:  3 stt_model        Unknown data     01 40 00420000 00310000
+I (89) boot:  4 tts_model        Unknown data     01 41 00730000 00240000
+I (95) boot:  5 orlm_model       Unknown data     01 42 00970000 00600000
+I (102) boot: End of partition table
+I (105) esp_image: segment 0: paddr=00020020 vaddr=3c0f0020 size=2bf30h (180016) map
+I (139) esp_image: segment 1: paddr=0004bf58 vaddr=3fc9d400 size=040c0h ( 16576) load
+I (143) esp_image: segment 2: paddr=00050020 vaddr=42000020 size=ec8d0h (968912) map
+I (288) esp_image: segment 3: paddr=0013c8f8 vaddr=3fca14c0 size=01b80h (  7040) load
+I (289) esp_image: segment 4: paddr=0013e480 vaddr=40374000 size=19310h (103184) load
+I (311) esp_image: segment 5: paddr=00157798 vaddr=50000234 size=00020h (    32) load
+I (321) boot: Loaded app from partition at offset 0x20000
+I (321) boot: Disabling RNG early entropy source...
+E (340) esp_core_dump_flash: No core dump partition found!
+E (340) esp_core_dump_flash: No core dump partition found!
+MCLAUTO ADDRESS_SELFTEST PASS type=0 original=c1:23:45:67:89:ab old=ab:89:67:45:23:c1
+MCLAUTO ADDRESS_SELFTEST PASS type=1 original=c1:23:45:67:89:ab old=ab:89:67:45:23:c1
+MCLAUTO BEACON_SELFTEST PASS exact/truncated/overlong/wrong-token
+MCLAUTO READY wire_major=1 link_major=1 arena=171632 window=47360 scratch=76912 min_window=47360 free_heap=85996 psram=8101604/8388608 source_ref=1637378910
+MCLAUTO armed run resumed after restart, wifi never started
+MCLAUTO listener prepare rc=0 ms=299
+MCLAUTO phase QUIESCE free_heap=85996
+MCLAUTO phase RENDEZVOUS free_heap=85996
+MCLAUTO machine started deployment=MCL-REFERENCE-DEPLOYMENT-1 candidate_transport=3
+MCLAUTO run start scenario=2 duration=90000 quiesce=1 free_heap=85996
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO CONTACT 10 bytes
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO CONTACT 17 bytes
+MCLAUTO emitted 16 bytes, 65280 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO phase ACTIVATE free_heap=85996
+MCLAUTO acceptor: peer token B64F66CE learned from the air
+MCLAUTO BLE up free_heap=14280 largest=7668
+MCLAUTO BLE scanning for token=B64F66CE
+MCLAUTO CONTACT 17 bytes
+MCLAUTO candidate closed on transport 3
+MCLAUTO BLE down free_heap=87668
+MCLAUTO emitted 16 bytes, 65280 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO acceptor: peer token B64F66CE learned from the air
+MCLAUTO BLE init refused free_heap=87668
+MCLAUTO ERROR status=3 transport=3
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO CONTACT 17 bytes
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO CONTACT 17 bytes
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO activation window expired without a connection
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO emitted 10 bytes, 57600 samples
+MCLAUTO listener prepare rc=0 ms=300
+MCLAUTO run end state=DONE heard=0 recovered=5 emitted=12 unscanned=0
+MCLAUTO run end cap_blocks=3299 cap_samples=3378176 peak=2723 mean=1107
+MCLAUTO run end pushed=236544 searched=224896 unscanned=0 queue=0/0
+MCLAUTO run end read_ms=66788/25 poll_ms=0/0 polls=0
+MCLAUTO run end objects=0 ble_tx=0 ble_rx=0 ble_frag_rej=0
+MCLAUTO run end scan_seen=1 match=0 uuid=0 slices=0 heap=87668/34804
+MCLAUTO wifi up ssid=mcl-auto-node ip=192.168.4.1
+MCLAUTO wifi restored; result available
+MCLAUTO phase REPORT free_heap=32772
+MCLAUTO RESULT state=DONE phase=REPORT zero_prior=true heard=0 recovered=5 emitted=12 objects=0 ble_tx=0 ble_rx=0 scan_match=0 scan_uuid_only=0 log_dropped=0 ble_lost=0 machine=ANNOUNCING
+MCLAUTO VALUE own_source_ref=1637378910 provenance=LOCAL
+MCLAUTO VALUE peer_endpoint_token=3058656974 provenance=FROM_AIR
+MCLAUTO SCANRAW len=0 hex=

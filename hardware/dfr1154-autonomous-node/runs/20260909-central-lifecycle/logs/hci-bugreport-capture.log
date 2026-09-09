@@ -1,0 +1,9 @@
+adb.exe : /data/user_de/0/com.android.shell/files/bugreports/bugreport-2017i-UP1A.231005.007-2026-09-09-04-43-39.zip: 
+1 file pulled, 0 skipped. 32.8 MB/s (24620463 bytes in 0.717s)
+At line:2 char:482
++ ... ndroid.log; & C:/Users/marsm/rdb/adb.exe bugreport tmp/audit-20260909 ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (/data/user_de/0...ytes in 0.717s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Bug report copied to tmp/audit-20260909-android/hci-bugreport.zip

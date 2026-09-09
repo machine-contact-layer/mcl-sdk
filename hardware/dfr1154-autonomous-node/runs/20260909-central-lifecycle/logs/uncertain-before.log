@@ -1,0 +1,53 @@
+Internal ctest changing into directory: /mnt/c/Users/marsm/Downloads/mcl/tmp/audit-20260909-android/sdk-tests
+Test project /mnt/c/Users/marsm/Downloads/mcl/tmp/audit-20260909-android/sdk-tests
+    Start 1: mcl_sdk_conformance
+1/9 Test #1: mcl_sdk_conformance ..............   Passed    0.00 sec
+    Start 2: mcl_sdk_machine
+2/9 Test #2: mcl_sdk_machine ..................***Failed    0.01 sec
+=== MCL integration facade ===
+[machine] the named deployment fills the configuration
+[machine] a platform that cannot honour the deployment is refused
+[machine] two strangers, five callbacks, one event
+[machine] a bearer that takes time to open still reaches contact
+[machine] an asynchronous candidate refusal is reportable
+[machine] lost ACCEPT retains the same pending platform candidate
+[machine] lost ACCEPT retains the same pending platform candidate
+  FAIL both endpoints establish after acceptance retransmission
+  FAIL acceptance recovery does not tear down either candidate
+[machine] a policy callback answers without an event
+[machine] a refusal is a refusal, not a delayed acceptance
+[machine] two machines with no bearer in common say so
+[machine] a bearer the machine cannot open is an error, not a contact
+[machine] a vanished candidate path releases both platform opens
+[machine] names exist for a log to print
+
+67 checks, 2 failed
+
+    Start 3: mcl_sdk_rendezvous
+3/9 Test #3: mcl_sdk_rendezvous ...............   Passed    0.01 sec
+    Start 4: mcl_sdk_test
+4/9 Test #4: mcl_sdk_test .....................   Passed    0.00 sec
+    Start 5: mcl_sdk_framed
+5/9 Test #5: mcl_sdk_framed ...................   Passed    0.00 sec
+    Start 6: mcl_sdk_handoff
+6/9 Test #6: mcl_sdk_handoff ..................   Passed    0.01 sec
+    Start 7: mcl_sdk_multi_contact
+7/9 Test #7: mcl_sdk_multi_contact ............   Passed    0.01 sec
+    Start 8: mcl_sdk_test_headers
+8/9 Test #8: mcl_sdk_test_headers .............   Passed    0.00 sec
+    Start 9: mcl_sdk_transport_registry
+9/9 Test #9: mcl_sdk_transport_registry .......   Passed    0.02 sec
+
+89% tests passed, 1 tests failed out of 9
+
+Total Test time (real) =   0.19 sec
+
+The following tests FAILED:
+	  2 - mcl_sdk_machine (Failed)
+wsl.exe : Errors while running CTest
+At line:2 char:1
++ wsl.exe -d Ubuntu-24.04 -e sh -lc 'cmake --build /mnt/c/Users/marsm/D ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Errors while running CTest:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

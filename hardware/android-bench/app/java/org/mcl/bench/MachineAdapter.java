@@ -3,6 +3,7 @@ package org.mcl.bench;
 import android.os.Handler;
 
 import java.util.Arrays;
+import java.util.concurrent.ArrayBlockingQueue;
 
 /**
  * Android's bounded port of the product-facing {@code mcl_machine_t} API.
@@ -30,6 +31,7 @@ public final class MachineAdapter implements AutoCloseable, Mcl.MachinePlatform 
     private long listener;
     private Thread listenerThread;
     private boolean candidateOpening;
+    private final ArrayBlockingQueue<byte[]> pendingBle = new ArrayBlockingQueue<>(8);
     private boolean closed;
 
     public MachineAdapter(Handler work, AudioBench audio, BleBench ble,
@@ -102,7 +104,17 @@ public final class MachineAdapter implements AutoCloseable, Mcl.MachinePlatform 
 
     public void receiveBle(byte[] frame) {
         if (running) {
-            work.post(() -> receive(TRANSPORT_BLE, frame));
+            work.post(() -> {
+                if (!running) { return; }
+                if (!pendingBle.offer(frame)) {
+                    log.line("MACHINE BLE receive queue full: frame refused");
+                    return;
+                }
+                /* A notification may arrive before the next service tick.
+                   Publish readiness before feeding the first handoff frame. */
+                serviceCandidate();
+                service.run();
+            });
         }
     }
 
@@ -164,6 +176,7 @@ public final class MachineAdapter implements AutoCloseable, Mcl.MachinePlatform 
         if (Mcl.machineTakeCandidateRequest(handle, request) > 0) {
             if (request[4] != 0) {
                 candidateOpening = false;
+                pendingBle.clear();
                 ble.stop();
                 log.line("MACHINE candidate closed transport=" + request[0]);
             } else if (request[0] != TRANSPORT_BLE) {
@@ -187,8 +200,16 @@ public final class MachineAdapter implements AutoCloseable, Mcl.MachinePlatform 
         }
         if (candidateOpening && ble.isLinked()) {
             candidateOpening = false;
-            log.line("MACHINE candidate ready status="
-                    + Mcl.machineCandidateReady(handle));
+            final int status = Mcl.machineCandidateReady(handle);
+            log.line("MACHINE candidate ready status=" + status);
+            if (status != 0) { pendingBle.clear(); return; }
+        }
+        if (!candidateOpening && ble.isLinked()) {
+            byte[] frame;
+            while ((frame = pendingBle.poll()) != null) {
+                final int status = Mcl.machineReceive(handle, TRANSPORT_BLE, frame, frame.length);
+                if (status != 0) { log.line("MACHINE queued BLE receive status=" + status); }
+            }
         }
     }
 
@@ -223,6 +244,7 @@ public final class MachineAdapter implements AutoCloseable, Mcl.MachinePlatform 
         }
         closed = true;
         running = false;
+        pendingBle.clear();
         listening = false;
         work.removeCallbacks(service);
         audio.closeMicrophone();

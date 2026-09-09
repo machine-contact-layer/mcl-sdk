@@ -661,7 +661,9 @@ static void stage_announcing(mcl_rdv_t *rdv, uint32_t now)
      * already be answering it.
      */
     rdv->state = MCL_RDV_STATE_SOLICITING;
-    rdv->deadline_ms = now + solicit_timeout(rdv);
+    /* A blocking platform may spend the waveform's duration inside emit.
+       The peer's reply window starts after our successful emission. */
+    rdv->deadline_ms = now_of(rdv) + solicit_timeout(rdv);
 }
 
 /*
@@ -783,7 +785,7 @@ static void stage_heard(mcl_rdv_t *rdv, uint32_t now)
         return;
     }
     rdv->state = MCL_RDV_STATE_OFFERING;
-    rdv->deadline_ms = now + or_default(rdv->config.response_timeout_ms,
+    rdv->deadline_ms = now_of(rdv) + or_default(rdv->config.response_timeout_ms,
                                         DEFAULT_RESPONSE_TIMEOUT_MS);
 }
 
@@ -973,10 +975,10 @@ static void retransmit(mcl_rdv_t *rdv, uint32_t now, mcl_handoff_op_t op,
         /* The transport refused outright. That is not the same as a lost
            frame and is not retried faster because of it; the deadline below
            still applies. */
-        rdv->deadline_ms = now + timeout;
+        rdv->deadline_ms = now_of(rdv) + timeout;
         return;
     }
-    rdv->deadline_ms = now + timeout;
+    rdv->deadline_ms = now_of(rdv) + timeout;
 }
 
 /*
@@ -1025,6 +1027,7 @@ static void stage_accepting(mcl_rdv_t *rdv, uint32_t now)
         return;
     }
     rdv->has_pending_accept = 0u;
+    now = now_of(rdv);
     /* A duplicate OFFER resends the stored acceptance while retaining the
        platform candidate. It is not a second bearer agreement. */
     rdv->state = previous_state == MCL_RDV_STATE_ACCEPTING
@@ -1160,7 +1163,7 @@ static void stage_committing(mcl_rdv_t *rdv, uint32_t now)
  * Begin path validation. Called from mcl_rdv_candidate_ready(), never from a
  * timer: the caller decides when the candidate is open.
  */
-static mcl_rdv_status_t begin_validation(mcl_rdv_t *rdv, uint32_t now)
+static mcl_rdv_status_t begin_validation(mcl_rdv_t *rdv)
 {
     mcl_rdv_status_t status;
     /*
@@ -1197,7 +1200,7 @@ static mcl_rdv_status_t begin_validation(mcl_rdv_t *rdv, uint32_t now)
        the candidate and require a matching response; silence follows the
        same bounded retransmission path as any other lost challenge. */
     rdv->state = MCL_RDV_STATE_VALIDATING;
-    rdv->deadline_ms = now + or_default(rdv->config.response_timeout_ms,
+    rdv->deadline_ms = now_of(rdv) + or_default(rdv->config.response_timeout_ms,
                                         DEFAULT_RESPONSE_TIMEOUT_MS);
     return MCL_RDV_OK;
 }
@@ -1364,7 +1367,7 @@ mcl_rdv_status_t mcl_rdv_candidate_ready(mcl_rdv_t *rdv)
         rdv->state = MCL_RDV_STATE_CANDIDATE_PENDING;
         return MCL_RDV_OK;
     }
-    return begin_validation(rdv, now_of(rdv));
+    return begin_validation(rdv);
 }
 
 mcl_rdv_status_t mcl_rdv_candidate_refused(mcl_rdv_t *rdv)

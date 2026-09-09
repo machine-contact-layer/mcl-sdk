@@ -166,6 +166,14 @@ foreach ($f in ($headers + $sources)) {
     Write-Host ("  {0}  {1}" -f $h.Substring(0, 16), (Split-Path -Leaf $f))
 }
 
+# Record adapter and build inputs as well as the portable C sources.
+$adapterInputs = @($MyInvocation.MyCommand.Path, (Join-Path $scriptDir 'app\jni\mcl_jni.c')) +
+    @(Get-ChildItem (Join-Path $scriptDir 'app\java') -Recurse -Filter '*.java' | ForEach-Object FullName)
+foreach ($inputPath in $adapterInputs) {
+    $stagedHashes += ("  {0,-26} {1}" -f (Split-Path -Leaf $inputPath),
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $inputPath).Hash)
+}
+
 # --------------------------------------------------------------- native .so
 $outDir = Join-Path $scriptDir 'build'
 $libDir = Join-Path $outDir "lib\$Abi"
@@ -299,7 +307,7 @@ Write-Host "APK_BYTES=$apkBytes"
 $manifestPath = Join-Path $scriptDir 'build-manifest.txt'
 $lines = @(
     'MCL Android bench build',
-    "built: $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ')",
+    "built: $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))",
     "abi:   $Abi   minSdk: $MinSdk   platform: $Platform",
     "ndk:   $NdkVersion",
     '',

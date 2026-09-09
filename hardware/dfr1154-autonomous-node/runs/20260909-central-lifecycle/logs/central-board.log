@@ -1,0 +1,27 @@
+{"at_ms":3016,"text":"armed run resumed after restart, wifi never started"}
+{"at_ms":3346,"text":"listener prepare rc=0 ms=299"}
+{"at_ms":3346,"text":"phase QUIESCE free_heap=84012"}
+{"at_ms":3346,"text":"run start scenario=7 duration=40000 quiesce=1 free_heap=84012"}
+{"at_ms":3347,"text":"phase ACTIVATE free_heap=84012"}
+{"at_ms":3654,"text":"BLE up free_heap=12156 largest=7668"}
+{"at_ms":3655,"text":"BLE scanning for token=A5C30F17"}
+{"at_ms":3730,"text":"BLE found 44:25:1c:d5:37:29 type=1 adv_len=29"}
+{"at_ms":5550,"text":"BLE before_create heap=11380 largest=7668"}
+{"at_ms":5551,"text":"BLE after_create heap=10624 largest=7668"}
+{"at_ms":5551,"text":"BLE before_connect heap=10624 largest=7668"}
+{"at_ms":5551,"text":"BLE after_connect heap=10556 largest=7668"}
+{"at_ms":5551,"text":"BLE cleanup heap=7200 largest=6644"}
+{"at_ms":5551,"text":"BLE result connect=1 ready=1 gap=0 ms=1817"}
+{"at_ms":5551,"text":"BLE resource clients=1 cleanup=1 stack_free=2076"}
+{"at_ms":5551,"text":"BLE cancel_rc=-1 terminate_rc=-1 gap=-1 means unobserved"}
+{"at_ms":43386,"text":"run end state=FAILED heard=0 recovered=0 emitted=0 unscanned=0"}
+{"at_ms":43386,"text":"run end cap_blocks=1876 cap_samples=1921024 peak=1268 mean=1097"}
+{"at_ms":43386,"text":"run end pushed=1921024 searched=1907328 unscanned=0 queue=0/0"}
+{"at_ms":43386,"text":"run end read_ms=38153/51 poll_ms=9305/20 polls=468"}
+{"at_ms":43386,"text":"run end objects=0 ble_tx=1 ble_rx=0 ble_frag_rej=0"}
+{"at_ms":43386,"text":"run end scan_seen=2 match=1 uuid=0 slices=0 heap=7060/6644"}
+{"at_ms":43386,"text":"phase TEARDOWN free_heap=7060"}
+{"at_ms":43689,"text":"BLE down free_heap=85428"}
+{"at_ms":43705,"text":"wifi up ssid=mcl-auto-node ip=192.168.4.1"}
+{"at_ms":43706,"text":"wifi restored; result available"}
+{"at_ms":43706,"text":"phase REPORT free_heap=30572"}

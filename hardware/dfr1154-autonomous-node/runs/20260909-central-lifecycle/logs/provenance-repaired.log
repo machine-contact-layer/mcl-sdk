@@ -1,0 +1,31 @@
+=== MCL provenance and licensing audit ===
+
+-- licence file present and identical in every repository
+  ok   mcl-core
+  ok   mcl-wire
+  ok   mcl-link
+  ok   mcl-sdk
+  ok   mcl-ap
+  ok   mcl-ip
+  ok   mcl-ble
+  ok   mcl-uwb
+
+-- no dependency manifests (the repositories claim to have none)
+  ok   none found
+
+-- no vendored or third-party source trees
+  ok   none found
+
+-- every tracked binary sits in an accounted location, with a README
+  ok   213 binary artifact(s), all in an accounted location with a README
+
+-- licensing terms are documented
+  ok   mcl-core/LICENSING.md
+  ok   mcl-core/CONTRIBUTING.md
+
+PROVENANCE AUDIT PASSED
+
+What this does NOT establish: that the licence is the RIGHT one, or that
+no patent claim reads on the specification. Those are legal questions and
+this is a filesystem check. It establishes that nothing entered these
+repositories without provenance.

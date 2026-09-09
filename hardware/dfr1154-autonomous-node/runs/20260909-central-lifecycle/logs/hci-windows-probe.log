@@ -1,0 +1,9 @@
+scanning 15.0s for a connectable MCL advertiser
+found 62:31:C5:C0:14:33
+connected: True
+  MCL-RX present properties=['write-without-response', 'write']
+  MCL-TX present properties=['notify']
+writing 40 bytes as 3 fragment(s) at the minimum MTU
+  reassembled 40 bytes: 0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728
+frames received back: 1
+PASS: exact byte-for-byte round trip

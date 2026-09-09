@@ -84,6 +84,7 @@ typedef struct room_s {
     unsigned accepts_dropped;
     int wait_for_both_candidates;
     int candidate_tx_uncertain;
+    uint32_t blocking_send_ms;
 } room_t;
 
 typedef struct {
@@ -158,6 +159,7 @@ static int32_t plat_send(void *user, uint8_t transport_id,
     t->size = size;
     t->from = (uint8_t)p->index;
     t->deliver_at = room->now + 10u;
+    room->now += room->blocking_send_ms;
     return transport_id != MCL_CONTACT_TRANSPORT_AP && room->candidate_tx_uncertain ? 1 : 0;
 }
 
@@ -758,6 +760,34 @@ static void test_lost_commit_releases_both_candidates(int uncertain, unsigned de
           "both opened candidates were released after bounded failure");
 }
 
+static void test_blocking_send_keeps_reply_window(void)
+{
+    mcl_machine_config_t cfg;
+    mcl_platform_t plat;
+    mcl_machine_event_t ev;
+    unsigned i;
+    printf("[machine] a blocking emitter does not consume the peer's response window\n");
+    room_reset();
+    g_node_count = 1u;
+    g_room.blocking_send_ms = 1500u;
+    base_platform(&plat, &g_peers[0], 1);
+    (void)mcl_machine_config_deployment(&cfg, MCL_DEPLOYMENT_REFERENCE_1,
+        0x12345678u, MCL_CONTACT_ROLE_INITIATOR);
+    (void)mcl_machine_init(&g_machines[0], &cfg, &plat);
+    (void)mcl_machine_start(&g_machines[0]);
+    for (i = 0u; i < 1000u && g_room.count == 0u; ++i) {
+        (void)mcl_machine_poll(&g_machines[0], &ev);
+        if (g_room.count == 0u) { g_room.now += 10u; }
+    }
+    check(g_room.count == 1u, "one PRESENCE actually left the blocking emitter");
+    /* AP-BOOTSTRAP-1 section 8.1: arm 6000 ms on successfully emitting.
+       At 5900 ms after return a legal response must still be eligible. */
+    g_room.now += 5900u;
+    (void)mcl_machine_poll(&g_machines[0], &ev);
+    check(strcmp(mcl_machine_state_name(&g_machines[0]), "SOLICITING") == 0,
+          "the full normative response window remains after emission");
+}
+
 static void test_names(void)
 {
     printf("[machine] names exist for a log to print\n");
@@ -784,6 +814,7 @@ int main(void)
     test_lost_commit_releases_both_candidates(1, 2u);
     test_lost_commit_releases_both_candidates(1, 0u);
     test_names();
+    test_blocking_send_keeps_reply_window();
 
     printf("\n%d checks, %d failed\n", g_checks, g_failures);
     return (g_failures == 0) ? 0 : 1;

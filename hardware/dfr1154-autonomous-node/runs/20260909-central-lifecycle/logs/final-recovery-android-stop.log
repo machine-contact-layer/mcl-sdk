@@ -1,0 +1,40 @@
+09-09 15:54:34.597 13517 13541 I MCLBENCH: AUDIO played 65280 samples head=65280 underruns=1 gain=1.0
+09-09 15:54:34.598 13517 13541 I MCLBENCH: BLE ready advertiser=true scanner=true multi_adv=true
+09-09 15:54:34.598 13517 13541 I MCLBENCH: BLE scan stopped, matches=0 uuid_only=0
+09-09 15:54:34.606 13517 13541 I MCLBENCH: BLE scanning for token=4D7EB80A beacon=000000004D7EB80A
+09-09 15:54:34.606 13517 13541 I MCLBENCH: MACHINE BLE-ACTIVATE scan initiated=true
+09-09 15:54:40.490 13517 13541 I MCLBENCH: AUDIO play START requested=65280 duration_ms=1360 peak=32767 rms=16858 gain=1.0 state=1 buffer_frames=65280
+09-09 15:54:40.514 13517 13541 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13913
+09-09 15:54:42.042 13517 13541 I MCLBENCH: AUDIO played 65280 samples head=65280 underruns=1 gain=1.0
+09-09 15:55:12.043 13517 13541 I MCLBENCH: BLE advertising stopped
+09-09 15:55:12.052 13517 13541 I MCLBENCH: BLE scan stopped, matches=0 uuid_only=0
+09-09 15:55:12.052 13517 13541 I MCLBENCH: MACHINE candidate closed transport=3
+09-09 15:55:12.588 13517 13541 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 15:55:12.609 13517 13541 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13921
+09-09 15:55:13.987 13517 13541 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 15:55:22.284 13517 13541 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 15:55:22.304 13517 13541 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13929
+09-09 15:55:23.676 13517 13541 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 15:55:29.988 13517 13541 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 15:55:30.008 13517 13541 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13937
+09-09 15:55:31.379 13517 13541 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 15:55:40.438 13517 13541 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 15:55:40.466 13517 13541 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13945
+09-09 15:55:41.838 13517 13541 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 15:55:50.890 13517 13541 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 15:55:50.912 13517 13541 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13953
+09-09 15:55:52.276 13517 13541 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 15:55:59.597 13517 13541 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 15:55:59.611 13517 13541 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13961
+09-09 15:56:00.995 13517 13541 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 15:56:08.039 13517 13541 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 15:56:08.059 13517 13541 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13969
+09-09 15:56:09.410 13517 13541 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 15:56:19.207 13517 13541 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 15:56:19.226 13517 13541 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13977
+09-09 15:56:20.575 13517 13541 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 15:56:43.241 13517 13517 I MCLBENCH: > machine stop
+09-09 15:56:43.281 13517 13541 I MCLBENCH: AUDIO capture closed
+09-09 15:56:43.282 13517 13541 I MCLBENCH: BLE advertising stopped
+09-09 15:56:43.282 13517 13541 I MCLBENCH: BLE scan stopped, matches=0 uuid_only=0
+09-09 15:56:43.282 13517 13541 I MCLBENCH: MACHINE stopped

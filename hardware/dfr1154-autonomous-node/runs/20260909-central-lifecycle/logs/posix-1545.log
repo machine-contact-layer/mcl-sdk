@@ -1,0 +1,83 @@
+=== MCL release rehearsal ===
+root: /mnt/c/Users/marsm/Downloads/mcl
+
+-- the eight repositories are at their release commits
+   mcl-core  369f31c
+   mcl-wire  4f4c838
+   mcl-link  d9819cb
+   mcl-sdk   24bb6ab
+   mcl-ap    b28a411
+   mcl-ip    fac3874
+   mcl-ble   cbf80c3
+   mcl-uwb   abf8268
+
+local gates (GCC/Clang/sanitizers/cross)   FAIL
+        specification index is current (38 rows)
+      
+      === feature traceability ===
+        21 features traced.
+      
+      === reference deployment: document vs SDK ===
+          SDK        bearers             3:1 2:1 
+      
+      === provenance and licensing ===
+      GATE FAILED: provenance and licensing
+        FAIL mcl-core/releases/v1.0.0/mcl-developer-sdk.tar.gz is a binary outside evidence/experiments
+      PROVENANCE AUDIT FAILED
+      
+      === SUMMARY ===
+      1 GATE(S) FAILED
+test harnesses cannot run a stale binary   PASS
+C4 cross-implementation                    PASS
+C5 profile interoperability                PASS
+BLE probe verdict regressions              PASS
+installable package + external consumer    PASS
+public API surface                         PASS
+registry governance                        PASS
+specification index                        PASS
+specification maturity                     PASS
+AP-BOOTSTRAP-1 vectors, both receivers     PASS
+feature traceability                       PASS
+deployment profiles                        PASS
+reference deployment: document vs SDK      PASS
+clean-checkout adoption path               PASS
+provenance and licensing                   FAIL
+      -- no dependency manifests (the repositories claim to have none)
+        ok   none found
+      
+      -- no vendored or third-party source trees
+        ok   none found
+      
+      -- every tracked binary sits in an accounted location, with a README
+        FAIL mcl-core/releases/v1.0.0/mcl-developer-sdk.tar.gz is a binary outside evidence/experiments
+      
+      -- licensing terms are documented
+        ok   mcl-core/LICENSING.md
+        ok   mcl-core/CONTRIBUTING.md
+      
+      1 provenance problem(s).
+      PROVENANCE AUDIT FAILED
+go/no-go audit                             FAIL
+        ok   api-baseline.sh
+        ok   check-publication-readiness.sh
+        ok   build-spec-index.sh --check
+      
+      === SUMMARY ===
+      fatal findings:         1
+      informational findings: 61
+      
+      An informational finding is not automatically a problem. 'Research Draft'
+      on a document v1.0 does not make Stable is correct. A provisional registry
+      entry for a Candidate object is correct. Experimental profile 192 in a
+      test is correct -- that is the value C4/C5 run against. Each still has to
+      be LOOKED AT, which is why they are listed rather than counted.
+      
+      GO/NO-GO: NO. 1 fatal finding(s).
+publication readiness                      PASS
+release bundle reconstruction              PASS
+
+=== SUMMARY ===
+16 passed
+FAILED: local gates (GCC/Clang/sanitizers/cross) provenance and licensing go/no-go audit
+
+REHEARSAL FAILED

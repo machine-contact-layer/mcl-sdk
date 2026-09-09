@@ -1,0 +1,24 @@
+Internal ctest changing into directory: /mnt/c/Users/marsm/Downloads/mcl/tmp/audit-20260909-android/sdk-tests
+Test project /mnt/c/Users/marsm/Downloads/mcl/tmp/audit-20260909-android/sdk-tests
+    Start 1: mcl_sdk_conformance
+1/9 Test #1: mcl_sdk_conformance ..............   Passed    0.00 sec
+    Start 2: mcl_sdk_machine
+2/9 Test #2: mcl_sdk_machine ..................   Passed    0.01 sec
+    Start 3: mcl_sdk_rendezvous
+3/9 Test #3: mcl_sdk_rendezvous ...............   Passed    0.02 sec
+    Start 4: mcl_sdk_test
+4/9 Test #4: mcl_sdk_test .....................   Passed    0.01 sec
+    Start 5: mcl_sdk_framed
+5/9 Test #5: mcl_sdk_framed ...................   Passed    0.01 sec
+    Start 6: mcl_sdk_handoff
+6/9 Test #6: mcl_sdk_handoff ..................   Passed    0.00 sec
+    Start 7: mcl_sdk_multi_contact
+7/9 Test #7: mcl_sdk_multi_contact ............   Passed    0.00 sec
+    Start 8: mcl_sdk_test_headers
+8/9 Test #8: mcl_sdk_test_headers .............   Passed    0.00 sec
+    Start 9: mcl_sdk_transport_registry
+9/9 Test #9: mcl_sdk_transport_registry .......   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 9
+
+Total Test time (real) =   0.20 sec

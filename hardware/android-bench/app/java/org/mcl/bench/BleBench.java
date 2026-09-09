@@ -73,6 +73,7 @@ public final class BleBench {
     private final Context context;
     private final Logger log;
     private FrameSink sink;
+    private volatile boolean scanActive;
 
     private BluetoothAdapter adapter;
     private BluetoothLeAdvertiser advertiser;
@@ -194,7 +195,7 @@ public final class BleBench {
     private final ScanCallback scanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
-            if (result.getScanRecord() == null) {
+            if (!scanActive || result.getScanRecord() == null) {
                 return;
             }
             final byte[] raw = result.getScanRecord().getBytes();
@@ -290,6 +291,7 @@ public final class BleBench {
             log.line("BLE scan refused: no scanner");
             return false;
         }
+        stopScan();
         wantedBeacon = beaconFor(token);
         scanMatches = 0;
         scanUuidOnly = 0;
@@ -305,6 +307,7 @@ public final class BleBench {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
                 .build();
+        scanActive = true;
         scanner.startScan(null, settings, scanCallback);
         log.line("BLE scanning for token=" + String.format("%08X", token)
                  + " beacon=" + hex(wantedBeacon));
@@ -312,6 +315,7 @@ public final class BleBench {
     }
 
     public void stopScan() {
+        scanActive = false;
         if (scanner != null) {
             scanner.stopScan(scanCallback);
             log.line("BLE scan stopped, matches=" + scanMatches

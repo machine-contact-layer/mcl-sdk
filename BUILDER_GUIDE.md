@@ -29,12 +29,12 @@ The split, before you write anything:
 **Read this before designing anything around acoustic:** `MCL Stranger-Contact 1`
 is claimable, and only **with a caveat**. `AP-BOOTSTRAP-1` and `BLE-ACTIVATE-1`
 are both **Candidate**: normatively complete and implementable from their text.
-The current DFR1154/Android campaign has exercised acoustic reception in both
-directions, board-peripheral/Android-central GATT carriage, and exact-token
-scanning in the reverse orientation. These use different platform stacks;
-reverse-role connection/carriage is not established by a scan. The complete
-zero-prior lifecycle and 3+ shared-air
-contention gate remain open. The caveat therefore travels
+The retained DFR1154/Android campaign now includes zero-prior migration with
+explicit policy admission in both BLE orientations, using different platform
+stacks. Later adapter fixes have their own revision-specific regression logs.
+The three-machine attempts did not migrate: the tested Windows peripheral
+cannot emit the complete required beacon. The 3+ shared-air contention gate
+and public review remain open. The caveat therefore travels
 in code as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, not only in prose. See
 §4 for what that means for your product.
 
@@ -173,10 +173,11 @@ answer, and you receive one event. See [`QUICKSTART.md`](QUICKSTART.md) §06.
 `AP-BOOTSTRAP-1` and `BLE-ACTIVATE-1` remain Candidate because component-level
 bidirectional physical evidence is not the builder-interoperability acceptance
 test. The DFR1154 and Android implementations have exchanged acoustic bootstrap
-objects using different platform stacks. The retained Android-central GATT
-exchange establishes component carriage; the board-central record establishes
-scanning only. What remains unproved is the complete zero-prior facade
-lifecycle through migration and the 3+ shared-air contention variant. Until
+objects and reached two-device migration in both BLE roles. The retained
+three-machine attempts failed, and the Windows adapter is not qualified for
+BLE-ACTIVATE-1 in both roles. The detailed record is in
+`hardware/dfr1154-autonomous-node/runs/20260909-central-lifecycle/README.md`.
+The 3+ physical contention variant and final release gates remain open. Until
 those pass, `MCL Stranger-Contact 1` is
 **not guaranteed** between builders who never coordinate — and the caveat
 travels in code, as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, rather than

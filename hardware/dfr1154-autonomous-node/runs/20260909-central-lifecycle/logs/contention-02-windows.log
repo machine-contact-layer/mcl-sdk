@@ -1,0 +1,29 @@
+154336.277 WINDOWS source_ref=45E79E02 provenance=LOCAL deployment=MCL-REFERENCE-DEPLOYMENT-1
+154336.278 WINDOWS dll_sha256=8dbc9cf09ec0115573d2bf3174c29a0582c40388fb03260425e0f4a56565f781
+154336.319 WINDOWS AUDIO input_latency=0.08533333333333333 device=Microphone Array (Realtek(R) Audio)
+154336.319 WINDOWS MACHINE start status=0 input=18 output=14
+154338.429 WINDOWS AP RX bytes=10 hex=1002b958d2460000013c contacts=1
+154338.429 WINDOWS MACHINE event=1 transport=1 profile=0 peer_ref=B958D246 session_ref=00000000 status=0 poll=0
+154340.930 WINDOWS AP TX bytes=17 hex=180245e79e02f13dcd090301adbda9dc3c samples=66560
+154348.517 WINDOWS AP TX bytes=17 hex=180245e79e02f13dcd090301adbda9dc3c samples=66560
+154354.246 WINDOWS AP RX bytes=16 hex=180ab958d246f13dcd0903011a922f22 contacts=1
+154354.246 WINDOWS CANDIDATE open transport=3 profile=1 peer_token=00000000 local_token=ADBDA9DC
+154354.264 WINDOWS BLE advertising status=3 error=0
+154354.264 WINDOWS BLE advertising token=ADBDA9DC provenance=LOCAL
+154354.332 WINDOWS BLE advertising status=4 error=0
+154355.265 WINDOWS BLE activation failed RuntimeError: Windows cannot advertise the complete required service-data beacon
+154355.265 WINDOWS CANDIDATE close transport=3
+154355.265 WINDOWS CANDIDATE refused status=0
+154355.274 WINDOWS MACHINE event=6 transport=0 profile=0 peer_ref=00000000 session_ref=00000000 status=3 poll=0
+154358.766 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154367.425 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154377.815 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154388.300 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154397.434 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154407.578 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154416.242 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154424.888 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154434.777 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154443.431 WINDOWS AP TX bytes=10 hex=100245e79e020000013c samples=57600
+154448.382 WINDOWS AP RX bytes=10 hex=1002143c56c90000013c contacts=1
+154486.335 WINDOWS RESULT state=IDLE established=0 audio_drops=0 fragment_rejections=0 max_audio_queue_ms=1582.8

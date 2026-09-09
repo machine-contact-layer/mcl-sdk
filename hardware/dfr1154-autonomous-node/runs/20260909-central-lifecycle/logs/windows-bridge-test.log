@@ -1,0 +1,3 @@
+117334.789 WINDOWS source_ref=3630C5DE provenance=LOCAL deployment=MCL-REFERENCE-DEPLOYMENT-1
+117334.790 WINDOWS dll_sha256=2b5833402312bc057cfab17ec53057aec2ff445c1eeb904463766cd3327b249f
+PASS: canonical PCM exact recovery; 40-byte three-fragment exact recovery; missing middle refused

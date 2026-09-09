@@ -1,0 +1,7 @@
+wsl.exe : sh: cd: line 0: can't cd to /mnt/c/Users/marsm/Downloads/mcl: No such file or directory
+At line:2 char:1
++ wsl.exe -e sh -lc 'cd /mnt/c/Users/marsm/Downloads/mcl && sh mcl-core ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (sh: cd: line 0:...le or directory:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

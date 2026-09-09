@@ -1,0 +1,11 @@
+--------- beginning of main
+09-09 05:30:53.921 19884 19884 I MCLBENCH: MCL bench up
+09-09 05:30:53.922 19884 19884 I MCLBENCH: native: wire_major=1 link_major=1 scratch=76912 modem_max_payload=64
+09-09 05:30:53.922 19884 19884 I MCLBENCH: source_ref=36B3DB6F provenance=LOCAL
+09-09 05:30:53.922 19884 19884 I MCLBENCH: commands: adb shell am broadcast -a org.mcl.bench.CMD --es cmd "..."
+09-09 05:30:53.922 19884 19884 I MCLBENCH:   emit <PRESENCE|OFFER|ACCEPT> [gain_pct]
+09-09 05:30:53.922 19884 19884 I MCLBENCH:   ladder <lo> <hi> [reps]
+09-09 05:30:53.922 19884 19884 I MCLBENCH:   band <lo> <hi>    listen <ms>    stop
+09-09 05:30:53.922 19884 19884 I MCLBENCH:   ble on|off    adv <tokenhex>    scan <tokenhex>    blesend <hex>
+09-09 05:30:53.922 19884 19884 I MCLBENCH:   machine start <initiator|responder> | admit | refuse | stop
+09-09 05:30:56.810 19884 19884 I MCLBENCH: > ble off

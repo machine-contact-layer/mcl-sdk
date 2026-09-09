@@ -63,6 +63,7 @@ class Bench:
             'poll': ([VOID, C.POINTER(C.c_uint32)], C.c_int),
             'ready': ([VOID], C.c_int), 'refused': ([VOID], C.c_int),
             'admit': ([VOID], C.c_int), 'state': ([VOID], C.c_char_p),
+            'reset_audio': ([VOID], C.c_int),
             'receive': ([VOID, C.c_int, U8, C.c_size_t], C.c_int),
             'audio': ([VOID, C.POINTER(C.c_int16), C.c_size_t, U8, C.POINTER(C.c_uint32)], C.c_int),
             'modulate': ([U8, C.c_size_t, C.POINTER(C.c_int16), C.c_size_t], C.c_int),
@@ -75,9 +76,11 @@ class Bench:
             fn.argtypes, fn.restype = argtypes, result
         self.audio_queue = queue.Queue(maxsize=128)
         self.audio_drops = 0
+        self.max_audio_queue_ms = 0.0
         self.self_tx = False
         self.busy = False
         self.ready = False
+        self.closed = False
         self.generation = 0
         self.client = self.provider = self.rx = self.tx = None
         self.tasks = set()
@@ -207,17 +210,20 @@ class Bench:
                 advertising.service_data = winbuffer(local.to_bytes(8, 'big'))
                 self.provider.start_advertising_with_parameters(advertising)
                 log(f'BLE advertising token={local:08X} provenance=LOCAL')
+                await asyncio.sleep(1)
+                if generation == self.generation and int(self.provider.advertisement_status) != 2:
+                    raise RuntimeError('Windows cannot advertise the complete required service-data beacon')
         except Exception as error:
             log(f'BLE activation failed {type(error).__name__}: {error}')
             if generation == self.generation:
                 log(f'CANDIDATE refused status={self.dll.bench_refused(self.handle)}')
 
     def subscribed(self, generation):
-        if generation == self.generation and self.tx is not None and len(self.tx.subscribed_clients):
+        if not self.closed and generation == self.generation and self.tx is not None and len(self.tx.subscribed_clients):
             self.mark_ready(generation)
 
     def mark_ready(self, generation):
-        if generation == self.generation and not self.ready:
+        if not self.closed and generation == self.generation and not self.ready:
             self.ready = True
             log(f'CANDIDATE ready status={self.dll.bench_ready(self.handle)}')
 
@@ -235,6 +241,8 @@ class Bench:
             deferral.complete()
 
     def fragment_received(self, data):
+        if self.closed:
+            return
         out = (C.c_uint8 * 2048)()
         used = self.dll.bench_reassemble(self.handle, buffer(data), len(data), out)
         if used < 0:
@@ -275,7 +283,7 @@ class Bench:
         if status:
             self.audio_drops += 1
         try:
-            self.audio_queue.put_nowait((pcm.copy(), self.self_tx))
+            self.audio_queue.put_nowait((pcm.copy(), self.self_tx, time.monotonic()))
         except queue.Full:
             self.audio_drops += 1
 
@@ -283,15 +291,21 @@ class Bench:
         worker = self.task(self.transmit_worker())
         try:
             with sd.InputStream(samplerate=48000, channels=1, dtype='int16', blocksize=2048,
-                                device=self.args.input, callback=self.captured):
+                                device=self.args.input, latency='low', callback=self.captured) as stream:
+                log(f'AUDIO input_latency={stream.latency} device={sd.query_devices(self.args.input, "input")["name"]}')
                 log(f'MACHINE start status={self.dll.bench_start(self.handle)} input={self.args.input} output={self.args.output}')
                 end = time.monotonic() + self.args.duration
                 while time.monotonic() < end:
                     for _ in range(16):
                         try:
-                            pcm, self_echo = self.audio_queue.get_nowait()
+                            pcm, self_echo, captured_at = self.audio_queue.get_nowait()
                         except queue.Empty:
                             break
+                        self.max_audio_queue_ms = max(self.max_audio_queue_ms, (time.monotonic() - captured_at) * 1000)
+                        if self_echo:
+                            self.dll.bench_reset_audio(self.handle)
+                            self.busy = False
+                            continue
                         out, info = (C.c_uint8 * 17)(), (C.c_uint32 * 3)()
                         result = self.dll.bench_audio(self.handle, pcm.ctypes.data_as(C.POINTER(C.c_int16)), len(pcm), out, info)
                         self.busy = result == 3 and not self_echo
@@ -308,8 +322,9 @@ class Bench:
                         self.established.append(list(event))
                     await asyncio.sleep(0.01)
         finally:
-            log(f'RESULT state={self.dll.bench_state(self.handle).decode()} established={len(self.established)} audio_drops={self.audio_drops} fragment_rejections={self.rejections}')
+            log(f'RESULT state={self.dll.bench_state(self.handle).decode()} established={len(self.established)} audio_drops={self.audio_drops} fragment_rejections={self.rejections} max_audio_queue_ms={self.max_audio_queue_ms:.1f}')
             self.ready = False
+            self.closed = True
             self.generation += 1
             worker.cancel()
             for task in list(self.tasks):

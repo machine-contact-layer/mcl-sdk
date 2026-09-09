@@ -1,0 +1,17 @@
+--------- beginning of main
+09-09 04:32:30.105 31111 31111 I MCLBENCH: MCL bench up
+09-09 04:32:30.106 31111 31111 I MCLBENCH: native: wire_major=1 link_major=1 scratch=76912 modem_max_payload=64
+09-09 04:32:30.106 31111 31111 I MCLBENCH: source_ref=9A61AB90 provenance=LOCAL
+09-09 04:32:30.106 31111 31111 I MCLBENCH: commands: adb shell am broadcast -a org.mcl.bench.CMD --es cmd "..."
+09-09 04:32:30.106 31111 31111 I MCLBENCH:   emit <PRESENCE|OFFER|ACCEPT> [gain_pct]
+09-09 04:32:30.106 31111 31111 I MCLBENCH:   ladder <lo> <hi> [reps]
+09-09 04:32:30.106 31111 31111 I MCLBENCH:   band <lo> <hi>    listen <ms>    stop
+09-09 04:32:30.106 31111 31111 I MCLBENCH:   ble on|off    adv <tokenhex>    scan <tokenhex>    blesend <hex>
+09-09 04:32:30.106 31111 31111 I MCLBENCH:   machine start <initiator|responder> | admit | refuse | stop
+09-09 04:32:33.054 31111 31111 I MCLBENCH: > ble on
+09-09 04:32:33.061 31111 31146 I MCLBENCH: BLE ready advertiser=true scanner=true multi_adv=true
+09-09 04:32:33.785 31111 31111 I MCLBENCH: > adv A5C30F17
+09-09 04:32:33.785 31111 31146 I MCLBENCH: VALUE endpoint_token=A5C30F17 provenance=CONFIGURED (this run is NOT zero-prior)
+09-09 04:32:33.797 31111 31146 I MCLBENCH: BLE GATT server up, MCL-RX write / MCL-TX notify
+09-09 04:32:33.808 31111 31146 I MCLBENCH: BLE advertising token=A5C30F17 beacon=00000000A5C30F17
+09-09 04:32:33.865 31111 31111 I MCLBENCH: BLE advertising started, tx_power=3

@@ -1,0 +1,30 @@
+--------- beginning of main
+09-09 04:42:03.161  7904  7904 I MCLBENCH: MCL bench up
+09-09 04:42:03.163  7904  7904 I MCLBENCH: native: wire_major=1 link_major=1 scratch=76912 modem_max_payload=64
+09-09 04:42:03.164  7904  7904 I MCLBENCH: source_ref=76A221A6 provenance=LOCAL
+09-09 04:42:03.164  7904  7904 I MCLBENCH: commands: adb shell am broadcast -a org.mcl.bench.CMD --es cmd "..."
+09-09 04:42:03.164  7904  7904 I MCLBENCH:   emit <PRESENCE|OFFER|ACCEPT> [gain_pct]
+09-09 04:42:03.164  7904  7904 I MCLBENCH:   ladder <lo> <hi> [reps]
+09-09 04:42:03.164  7904  7904 I MCLBENCH:   band <lo> <hi>    listen <ms>    stop
+09-09 04:42:03.164  7904  7904 I MCLBENCH:   ble on|off    adv <tokenhex>    scan <tokenhex>    blesend <hex>
+09-09 04:42:03.164  7904  7904 I MCLBENCH:   machine start <initiator|responder> | admit | refuse | stop
+09-09 04:42:06.060  7904  7904 I MCLBENCH: > ble on
+09-09 04:42:06.067  7904  7958 I MCLBENCH: BLE ready advertiser=true scanner=true multi_adv=true
+09-09 04:42:06.759  7904  7904 I MCLBENCH: > adv A5C30F17
+09-09 04:42:06.759  7904  7958 I MCLBENCH: VALUE endpoint_token=A5C30F17 provenance=CONFIGURED (this run is NOT zero-prior)
+09-09 04:42:06.777  7904  7958 I MCLBENCH: BLE GATT server up, MCL-RX write / MCL-TX notify
+09-09 04:42:06.787  7904  7958 I MCLBENCH: BLE advertising token=A5C30F17 beacon=00000000A5C30F17
+09-09 04:42:06.825  7904  7904 I MCLBENCH: BLE advertising started, tx_power=3
+09-09 04:42:17.864  7904  7943 I MCLBENCH: BLE central connected: D8:80:83:CA:BA:2A
+09-09 04:42:20.010  7904  7930 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 04:42:20.039  7904  7930 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=800102030405060708090A0B0C0D0E0F10111213
+09-09 04:42:20.066  7904  7930 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=011415161718191A1B1C1D1E1F20212223242526
+09-09 04:42:20.092  7904  7944 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=422728
+09-09 04:42:20.093  7904  7944 I MCLBENCH: BLE frame in, 40 bytes
+09-09 04:42:20.097  7904  7944 I MCLBENCH: BLE frame in 40 bytes: 0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728
+09-09 04:42:20.171  7904  7958 I MCLBENCH: BLE echo sent
+09-09 04:42:23.175  7904  7943 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0000
+09-09 04:42:26.420  7904  7930 I MCLBENCH: BLE central disconnected
+09-09 04:42:38.039  7904  7944 I MCLBENCH: BLE central connected: E8:F6:0A:86:7B:D9
+09-09 04:42:38.788  7904  7944 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 04:43:17.068  7904  7944 I MCLBENCH: BLE central disconnected

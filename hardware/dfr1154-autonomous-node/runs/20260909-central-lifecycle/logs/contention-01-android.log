@@ -1,0 +1,57 @@
+--------- beginning of main
+09-09 15:46:50.258 11199 11199 I MCLBENCH: MCL bench up
+09-09 15:46:50.259 11199 11199 I MCLBENCH: native: wire_major=1 link_major=1 scratch=76912 modem_max_payload=64
+09-09 15:46:50.259 11199 11199 I MCLBENCH: source_ref=577E4E68 provenance=LOCAL
+09-09 15:46:50.259 11199 11199 I MCLBENCH: commands: adb shell am broadcast -a org.mcl.bench.CMD --es cmd "..."
+09-09 15:46:50.259 11199 11199 I MCLBENCH:   emit <PRESENCE|OFFER|ACCEPT> [gain_pct]
+09-09 15:46:50.259 11199 11199 I MCLBENCH:   ladder <lo> <hi> [reps]
+09-09 15:46:50.259 11199 11199 I MCLBENCH:   band <lo> <hi>    listen <ms>    stop
+09-09 15:46:50.259 11199 11199 I MCLBENCH:   ble on|off    adv <tokenhex>    scan <tokenhex>    blesend <hex>
+09-09 15:46:50.259 11199 11199 I MCLBENCH:   machine start <initiator|responder> | admit | refuse | stop
+09-09 15:46:53.065 11199 11199 I MCLBENCH: > ble off
+09-09 15:46:55.522 11199 11199 I MCLBENCH: > machine start responder
+09-09 15:46:55.636 11199 11233 I MCLBENCH: AUDIO capture open, source=VOICE_RECOGNITION rate=48000
+09-09 15:46:55.636 11199 11233 I MCLBENCH: MACHINE started source_ref is local; poll_ms=10
+09-09 15:46:57.530 11199 11233 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 15:46:57.552 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13761
+09-09 15:46:58.927 11199 11233 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0
+09-09 15:47:05.613 11199 11233 I MCLBENCH: MACHINE event=1 transport=1 profile=0 peer_ref=FA3F3EB6 session_ref=00000000 status=0
+09-09 15:47:06.518 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:47:06.536 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13769
+09-09 15:47:08.111 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:47:12.433 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:47:12.449 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13777
+09-09 15:47:14.025 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:47:18.432 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:47:18.448 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13785
+09-09 15:47:20.015 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:47:24.472 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:47:24.487 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13793
+09-09 15:47:26.056 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:47:30.471 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:47:30.489 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13801
+09-09 15:47:32.067 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:47:34.206 11199 11233 I MCLBENCH: MACHINE candidate REFUSED transport=2
+09-09 15:47:34.207 11199 11233 I MCLBENCH: MACHINE candidate refused status=0
+09-09 15:47:34.217 11199 11233 I MCLBENCH: MACHINE event=6 transport=0 profile=0 peer_ref=00000000 session_ref=00000000 status=3
+09-09 15:47:34.217 11199 11233 I MCLBENCH: MACHINE candidate closed transport=2
+09-09 15:47:37.489 11199 11233 I MCLBENCH: MACHINE event=1 transport=1 profile=0 peer_ref=FA3F3EB6 session_ref=00000000 status=0
+09-09 15:47:38.800 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:47:38.817 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13809
+09-09 15:47:40.385 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:47:44.816 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:47:44.833 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13817
+09-09 15:47:46.373 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:47:53.554 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:47:53.575 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13825
+09-09 15:47:55.139 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:47:59.571 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:47:59.591 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13833
+09-09 15:48:01.169 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:48:05.593 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:48:05.609 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13841
+09-09 15:48:07.171 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:48:11.629 11199 11233 I MCLBENCH: AUDIO play START requested=66560 duration_ms=1386 peak=32767 rms=17002 gain=1.0 state=1 buffer_frames=66560
+09-09 15:48:11.646 11199 11233 I MCLBENCH: AUDIO track PLAYING play_state=3 session=13849
+09-09 15:48:13.226 11199 11233 I MCLBENCH: AUDIO played 66560 samples head=66560 underruns=1 gain=1.0
+09-09 15:48:17.568 11199 11233 I MCLBENCH: MACHINE event=5 transport=0 profile=0 peer_ref=FA3F3EB6 session_ref=00000000 status=0

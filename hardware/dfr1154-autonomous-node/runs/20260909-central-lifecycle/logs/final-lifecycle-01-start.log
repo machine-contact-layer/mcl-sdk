@@ -1,0 +1,16 @@
+--------- beginning of main
+09-09 21:05:23.896 11369 11369 I MCLBENCH: MCL bench up
+09-09 21:05:23.899 11369 11369 I MCLBENCH: native: wire_major=1 link_major=1 scratch=76912 modem_max_payload=64
+09-09 21:05:23.899 11369 11369 I MCLBENCH: source_ref=2F8ED255 provenance=LOCAL
+09-09 21:05:23.899 11369 11369 I MCLBENCH: commands: adb shell am broadcast -a org.mcl.bench.CMD --es cmd "..."
+09-09 21:05:23.899 11369 11369 I MCLBENCH:   emit <PRESENCE|OFFER|ACCEPT> [gain_pct]
+09-09 21:05:23.899 11369 11369 I MCLBENCH:   ladder <lo> <hi> [reps]
+09-09 21:05:23.899 11369 11369 I MCLBENCH:   band <lo> <hi>    listen <ms>    stop
+09-09 21:05:23.899 11369 11369 I MCLBENCH:   ble on|off    adv <tokenhex>    scan <tokenhex>    blesend <hex>
+09-09 21:05:23.899 11369 11369 I MCLBENCH:   machine start <initiator|responder> | admit | refuse | stop
+09-09 21:05:27.375 11369 11369 I MCLBENCH: > machine start initiator
+09-09 21:05:27.440 11369 11395 I MCLBENCH: AUDIO capture open, source=VOICE_RECOGNITION rate=48000
+09-09 21:05:27.441 11369 11395 I MCLBENCH: MACHINE started source_ref is local; poll_ms=10
+09-09 21:05:27.604 11369 11395 I MCLBENCH: AUDIO play START requested=57600 duration_ms=1200 peak=32767 rms=15828 gain=1.0 state=1 buffer_frames=57600
+09-09 21:05:27.623 11369 11395 I MCLBENCH: AUDIO track PLAYING play_state=3 session=16457
+09-09 21:05:28.997 11369 11395 I MCLBENCH: AUDIO played 57600 samples head=57600 underruns=1 gain=1.0

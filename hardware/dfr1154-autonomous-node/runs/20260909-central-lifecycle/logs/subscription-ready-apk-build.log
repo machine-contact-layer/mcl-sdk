@@ -1,0 +1,60 @@
+=== MCL Android bench ===
+jdk        C:/Users/marsm/Downloads/prahari-c2/.tools/jdk-21/jdk-21.0.11+10
+sdk        C:/Users/marsm/Downloads/OPEN-POCKET/.tools/android-sdk (android-35, build-tools 35.0.0)
+ndk        26.1.10909125, arm64-v8a, minSdk 26
+
+Staged protocol sources (sha256):
+  8620F5A4FF5577E8  wire.h
+  DF4E57F1AF5D947B  extension.h
+  A3A2536ABE8F756D  link.h
+  539367E64F380A29  contact.h
+  5EFAAE673A793233  handoff.h
+  3D65F82D27BC52ED  control.h
+  B50F53B77908E0ED  negotiation.h
+  3BC270DEC2C2E511  endpoint_rendezvous.h
+  D08E7F2104F8E4A7  ap_modem.h
+  A828F3B3A50FD897  ap_listen.h
+  9B6ACD8EB33809A9  sdk.h
+  E08FB2DDA5123579  rendezvous.h
+  AAFC10B5C704506E  machine.h
+  83E7610BD336AE43  ble_binding.h
+  CED60C7E583D5423  ip_binding.h
+  7CDB80D6FCD3A7F2  wire.c
+  B4FBAD330F069F51  extension.c
+  2EED0537DD054388  link.c
+  E602F132F80A290A  contact.c
+  36702CD8949E7DD9  handoff.c
+  F515ABF3E0109CD1  control.c
+  BDE6DDE245C9F76C  negotiation.c
+  A7CE9B364D01797C  endpoint_rendezvous.c
+  66D8F827A41293B9  ap_modem.c
+  70074817552F3F61  ap_listen.c
+  5B0E8F772B579B5F  sdk.c
+  CCE245F7484BD343  rendezvous.c
+  24A3A5081FCFCE22  machine.c
+  FC578E8A5033BBF1  ble_binding.c
+  49C83A8D743CB03A  ip_binding.c
+
+Compiling libmclbench.so for arm64-v8a
+libmclbench.so  83480 bytes
+
+Compiling 5 Java sources
+javac.exe : Note: C:\Users\marsm\Downloads\mcl\mcl-sdk\hardware\android-bench\app\java\org\mcl\bench\BleBench.java 
+uses or overrides a deprecated API.
+At C:\Users\marsm\Downloads\mcl\mcl-sdk\hardware\android-bench\build-apk.ps1:209 char:1
++ & $javac -source 11 -target 11 -nowarn -classpath $androidJar -d $cla ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Note: C:\Users\...deprecated API.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Note: Recompile with -Xlint:deprecation for details.
+Dexing
+Linking resources
+Aligning
+Signing
+
+APK=C:\Users\marsm\Downloads\mcl\mcl-sdk\hardware\android-bench\build\mcl-bench.apk
+APK_SHA256=1369F811C1E32C6CFF2E6DC140DA8FFAC4F1CF9C45BF107F349F25BD63A5D0A3
+APK_BYTES=74205
+
+Not installed. adb install -r build\mcl-bench.apk

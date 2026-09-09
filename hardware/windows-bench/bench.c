@@ -34,7 +34,7 @@ API void bench_destroy(bench_t *b) { free(b); }
 API int bench_start(bench_t *b) { return (int)mcl_machine_start(&b->machine); }
 API int bench_poll(bench_t *b, uint32_t out[6])
 {
-    mcl_machine_event_t e;
+    mcl_machine_event_t e = {0};
     int rc = (int)mcl_machine_poll(&b->machine, &e);
     out[0] = (uint32_t)e.kind; out[1] = e.transport_id; out[2] = e.profile_id;
     out[3] = e.peer_ref; out[4] = e.session_ref; out[5] = (uint32_t)e.status;
@@ -44,6 +44,13 @@ API int bench_ready(bench_t *b) { return (int)mcl_machine_candidate_ready(&b->ma
 API int bench_refused(bench_t *b) { return (int)mcl_machine_candidate_refused(&b->machine); }
 API int bench_admit(bench_t *b) { return (int)mcl_machine_admit(&b->machine); }
 API const char *bench_state(bench_t *b) { return mcl_machine_state_name(&b->machine); }
+API int bench_reset_audio(bench_t *b)
+{
+    mcl_ap_listen_config_t cfg;
+    mcl_ap_listen_default_config(&cfg);
+    cfg.max_payload_bytes = 17u;
+    return (int)mcl_ap_listen_init(&b->listener, &cfg, b->window, 96000u);
+}
 API int bench_receive(bench_t *b, int transport, const uint8_t *data, size_t size)
 { return (int)mcl_machine_receive(&b->machine, (uint8_t)transport, data, size); }
 API int bench_audio(bench_t *b, const int16_t *pcm, size_t count, uint8_t out[17], uint32_t info[3])

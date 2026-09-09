@@ -1,0 +1,41 @@
+--------- beginning of main
+09-09 04:56:32.399 13408 13408 I MCLBENCH: MCL bench up
+09-09 04:56:32.400 13408 13408 I MCLBENCH: native: wire_major=1 link_major=1 scratch=76912 modem_max_payload=64
+09-09 04:56:32.400 13408 13408 I MCLBENCH: source_ref=17A4C1AF provenance=LOCAL
+09-09 04:56:32.400 13408 13408 I MCLBENCH: commands: adb shell am broadcast -a org.mcl.bench.CMD --es cmd "..."
+09-09 04:56:32.400 13408 13408 I MCLBENCH:   emit <PRESENCE|OFFER|ACCEPT> [gain_pct]
+09-09 04:56:32.400 13408 13408 I MCLBENCH:   ladder <lo> <hi> [reps]
+09-09 04:56:32.400 13408 13408 I MCLBENCH:   band <lo> <hi>    listen <ms>    stop
+09-09 04:56:32.400 13408 13408 I MCLBENCH:   ble on|off    adv <tokenhex>    scan <tokenhex>    blesend <hex>
+09-09 04:56:32.400 13408 13408 I MCLBENCH:   machine start <initiator|responder> | admit | refuse | stop
+09-09 04:56:35.362 13408 13408 I MCLBENCH: > ble on
+09-09 04:56:35.369 13408 13438 I MCLBENCH: BLE ready advertiser=true scanner=true multi_adv=true
+09-09 04:56:36.090 13408 13408 I MCLBENCH: > adv A5C30F17
+09-09 04:56:36.091 13408 13438 I MCLBENCH: VALUE endpoint_token=A5C30F17 provenance=CONFIGURED (this run is NOT zero-prior)
+09-09 04:56:36.105 13408 13438 I MCLBENCH: BLE GATT server up, MCL-RX write / MCL-TX notify
+09-09 04:56:36.113 13408 13438 I MCLBENCH: BLE advertising token=A5C30F17 beacon=00000000A5C30F17
+09-09 04:56:36.163 13408 13408 I MCLBENCH: BLE advertising started, tx_power=3
+09-09 04:56:49.520 13408 13426 I MCLBENCH: BLE central connected: E8:F6:0A:86:7B:D9
+09-09 04:56:50.316 13408 13424 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 04:57:03.855 13408 13423 I MCLBENCH: BLE central disconnected
+09-09 04:57:42.584 13408 13496 I MCLBENCH: BLE central connected: E8:F6:0A:86:7B:D9
+09-09 04:57:43.334 13408 13496 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 04:57:57.170 13408 13496 I MCLBENCH: BLE central disconnected
+09-09 04:58:26.018 13408 13424 I MCLBENCH: BLE central connected: E8:F6:0A:86:7B:D9
+09-09 04:58:26.967 13408 13423 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 04:58:40.602 13408 13426 I MCLBENCH: BLE central disconnected
+09-09 04:59:30.725 13408 13426 I MCLBENCH: BLE central connected: E8:F6:0A:86:7B:D9
+09-09 04:59:31.724 13408 13426 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 04:59:45.006 13408 13426 I MCLBENCH: BLE central disconnected
+09-09 05:02:03.497 13408 13423 I MCLBENCH: BLE central connected: E8:F6:0A:86:7B:D9
+09-09 05:02:04.246 13408 13426 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 05:02:14.577 13408 13426 I MCLBENCH: BLE central disconnected
+09-09 05:05:00.016 13408 13423 I MCLBENCH: BLE central connected: E8:F6:0A:86:7B:D9
+09-09 05:05:00.818 13408 13426 I MCLBENCH: BLE ATT descriptor uuid=00002902-0000-1000-8000-00805f9b34fb offset=0 prepared=false response=true bytes=0100
+09-09 05:05:00.919 13408 13424 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=800102030405060708090A0B0C0D0E0F10111213
+09-09 05:05:00.920 13408 13424 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=011415161718191A1B1C1D1E1F20212223242526
+09-09 05:05:00.934 13408 13424 I MCLBENCH: BLE ATT write uuid=6d636c00-0002-4d43-4c00-6d636c626c65 offset=0 prepared=false response=false bytes=422728
+09-09 05:05:00.934 13408 13424 I MCLBENCH: BLE frame in, 40 bytes
+09-09 05:05:00.935 13408 13424 I MCLBENCH: BLE frame in 40 bytes: 0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F202122232425262728
+09-09 05:05:01.005 13408 13438 I MCLBENCH: BLE echo sent
+09-09 05:05:01.070 13408 13426 I MCLBENCH: BLE central disconnected
