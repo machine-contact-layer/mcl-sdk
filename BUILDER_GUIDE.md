@@ -9,7 +9,7 @@ missing header.
 
 > **If you have not run MCL yet, start with [`QUICKSTART.md`](QUICKSTART.md).**
 > It gets you from a clone to two machines in contact in eight steps, using
-> `mcl/machine.h` â€” the facade that owns the protocol choreography. This
+> `mcl/machine.h` — the facade that owns the protocol choreography. This
 > document is the layer underneath: what the facade is doing, and every question
 > it does not answer for you.
 
@@ -36,7 +36,7 @@ The later three-device campaign reached DFR/Android migration with Windows
 participating acoustically, including an ignored competing ACCEPT. The full
 requested collision/traffic campaign and public review remain open. The caveat therefore travels
 in code as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, not only in prose. See
-Â§4 for what that means for your product.
+§4 for what that means for your product.
 
 The corrected zero-prior campaign reached an exact air-learned BLE
 advertisement twice, then the DFR central failed to establish the connection in
@@ -72,7 +72,7 @@ into an empty prefix, and builds a scratch consumer using only
 
 Everything protocol-facing is **freestanding C99**: no heap, no libc
 dependency, caller-owned structs. It builds for a microcontroller because it was
-built on one â€” see `mcl-ap/experiments/008-embedded-node/`.
+built on one — see `mcl-ap/experiments/008-embedded-node/`.
 
 ## 2. How do I attach my transport?
 
@@ -114,7 +114,7 @@ not ignore it and infer the bearer from call order.
 
 > Through `mcl/machine.h` you do not: `mcl_machine_start()` announces, and the
 > coordinator owns the cadence, the contention and the epoch. What follows is
-> the layer underneath, for a builder who is not using the facade â€” a bearer
+> the layer underneath, for a builder who is not using the facade — a bearer
 > with no shared medium, or an integration that has to place PRESENCE itself.
 
 ```c
@@ -132,9 +132,9 @@ mcl_node_init(&node, &cfg);
 
 Then send a `PRESENCE`. Two paths exist and the choice is real:
 
-- `mcl_node_send_tier0()` â€” raw canonical Wire bytes. What a broadcast beacon
+- `mcl_node_send_tier0()` — raw canonical Wire bytes. What a broadcast beacon
   wants, and what a bearer like acoustic carries directly.
-- `mcl_node_send_framed_tier0()` â€” inside a Link frame, with a class, session
+- `mcl_node_send_framed_tier0()` — inside a Link frame, with a class, session
   reference and sequence. What a real contact session needs, and what the IP and
   BLE bindings carry.
 
@@ -164,7 +164,7 @@ mcl/machine.h      the facade you should actually program against
 So you no longer implement detection, PRESENCE, contention, ordered bearer
 trial, OFFER/ACCEPT, activation, path validation or migration. You implement a
 clock, randomness, a way to move bytes, a way to open a bearer and a policy
-answer, and you receive one event. See [`QUICKSTART.md`](QUICKSTART.md) Â§06.
+answer, and you receive one event. See [`QUICKSTART.md`](QUICKSTART.md) §06.
 
 ### What is still true
 
@@ -180,7 +180,7 @@ not a qualified BLE-ACTIVATE-1 port in both roles. The detailed record is in
 `hardware/dfr1154-autonomous-node/runs/20260909-central-lifecycle/README.md`.
 The 3+ physical contention variant and final release gates remain open. Until
 those pass, `MCL Stranger-Contact 1` is
-**not guaranteed** between builders who never coordinate â€” and the caveat
+**not guaranteed** between builders who never coordinate — and the caveat
 travels in code, as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, rather than
 only in prose.
 
@@ -194,8 +194,8 @@ deployment that names BLE as a candidate bearer, without touching Stable
 
 **So: what should you design around today?**
 
-- If your machines have a bearer in common already â€” a fleet network, a
-  provisioned peer, a known address â€” use it, and treat acoustic rendezvous as
+- If your machines have a bearer in common already — a fleet network, a
+  provisioned peer, a known address — use it, and treat acoustic rendezvous as
   something you gain later without changing your integration.
 - If they genuinely have nothing in common, `MCL-REFERENCE-DEPLOYMENT-1` is the
   path, and you are adopting two Candidate profiles knowingly. They are
@@ -216,7 +216,7 @@ COMMIT / CONFIRM                on the candidate transport
 You drive it with `mcl_node_send_handoff()` and `mcl_node_apply_handoff()`. Two
 things will bite you if you skip them:
 
-**COMMIT is irrevocable.** Once it is sent there is no rollback. This is why Â§2's
+**COMMIT is irrevocable.** Once it is sent there is no rollback. This is why §2's
 three-valued return exists.
 
 **Between COMMIT and CONFIRM the contact is QUIESCED.** Sending ordinary traffic
@@ -241,13 +241,13 @@ machine* and neither can be right in a pool: `session_ref` has to be distinct
 across every contact you are running, and the coordinator has no view of the
 others. On BLE the token has to select **one transaction**, because
 `BLE-ACTIVATE-1` makes it the match key of the advertisement your peer scans
-for â€” one static token for two concurrent activations advertises identically
+for — one static token for two concurrent activations advertises identically
 for both.
 
 A hook that returns non-zero, or writes a zero session, is a **refusal**, and it
 is honoured: no acceptance is sent, no offer claims an address you did not mint,
 and nothing of the coordinator's own is substituted. The peer sees silence,
-retries, and eventually reports `NO_COMMON_BEARER` â€” which is the truth from its
+retries, and eventually reports `NO_COMMON_BEARER` — which is the truth from its
 side.
 
 `allocate_endpoint_token` is called **once per transaction**, not once per
@@ -262,7 +262,7 @@ negotiation is unauthenticated.
 
 Your options now:
 
-- Place MCL inside something that authenticates â€” DTLS, BLE Secure Connections,
+- Place MCL inside something that authenticates — DTLS, BLE Secure Connections,
   a private network. Legitimate, and what `mcl-core/SECURITY.md` recommends.
 - Or accept unauthenticated contact deliberately, which is correct for open
   presence and hazard broadcast where you are addressing unknown listeners on
@@ -285,7 +285,7 @@ reception != identity != authenticity != authority != trust != obligation
 From your deployment, not from MCL. MCL never holds a private key and is not a
 CA.
 
-A deployment profile names what is mandatory in one place â€”
+A deployment profile names what is mandatory in one place —
 `mcl-core/spec/deployment-profile-v1.md`, with a worked example at
 `mcl-core/deployments/MCL-REFERENCE-DEPLOYMENT-1.json`. Trust anchors and
 credential formats are deliberately **not** in the v1 schema, because those
@@ -358,10 +358,10 @@ Three claims exist. Pick the honest one:
 |---|---|
 | `MCL Base 1` | Given a shared bearer, we interoperate. **Claimable today.** |
 | `MCL Stranger-Contact 1` | We can meet a machine we have never met. Claimable only with `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE` until AP-BOOTSTRAP-1 and BLE-ACTIVATE-1 complete their independent physical qualification. |
-| `MCL Secure-Stranger 1` | â€¦and authenticate it. Reserved name, not specified. |
+| `MCL Secure-Stranger 1` | …and authenticate it. Reserved name, not specified. |
 
 A machine with no microphone may truthfully claim Base 1 forever. That is a
-first-class claim, not a degraded one â€” it is what most real deployments need.
+first-class claim, not a degraded one — it is what most real deployments need.
 
 ## 10. What will change under me?
 
@@ -385,7 +385,7 @@ Stated so you can plan:
 
 | You want | Read |
 |---|---|
-| What v1.0 claims and refuses to claim | `mcl-core/governance/V1_SCOPE.md` Â§5.9 |
+| What v1.0 claims and refuses to claim | `mcl-core/governance/V1_SCOPE.md` §5.9 |
 | Why the layers exist | `mcl-core/spec/conformance-profiles-v1.md` |
 | What a deployment selects | `mcl-core/spec/deployment-profile-v1.md` |
 | Every specification and its status | `mcl-core/SPECIFICATION_INDEX.md` |
