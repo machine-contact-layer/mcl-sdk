@@ -2,8 +2,10 @@
 
 Product-facing reference SDK for the **Machine Contact Layer**. The default
 integration is `mcl/machine.h`: the application supplies platform operations
-and receives contact events; MCL owns discovery, negotiation, validation,
-migration, retries, and cleanup.
+and receives contact events; MCL owns contact/session state, negotiation,
+validation, migration, retries, and cleanup. In MCL Base 1 the peers already
+share a bearer and discovery is not required. Optional Stranger-Contact adds
+zero-prior rendezvous when no bearer is shared.
 
 The primary reference SDK is a portable C99 implementation designed to run from resource-constrained microcontrollers through embedded systems and hosted applications without changing the protocol contract.
 
