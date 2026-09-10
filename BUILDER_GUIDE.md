@@ -33,8 +33,9 @@ The retained DFR1154/Android campaign now includes zero-prior migration with
 explicit policy admission in both BLE orientations, using different platform
 stacks. Later adapter fixes have their own revision-specific regression logs.
 The later three-device campaign reached DFR/Android migration with Windows
-participating acoustically, including an ignored competing ACCEPT. The full
-requested collision/traffic campaign and public review remain open. The caveat therefore travels
+participating acoustically, including an ignored competing ACCEPT. The original
+three-party release invariant is satisfied; the later collision/traffic matrix
+is informative robustness work, and public review remains open. The caveat therefore travels
 in code as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, not only in prose. See
 §4 for what that means for your product.
 
@@ -174,11 +175,12 @@ answer, and you receive one event. See [`QUICKSTART.md`](QUICKSTART.md) §06.
 bidirectional physical evidence is not the builder-interoperability acceptance
 test. The DFR1154 and Android implementations have exchanged acoustic bootstrap
 objects and reached two-device migration in both BLE roles. The retained
-three-device campaign includes migration, but its collision and traffic
-qualification remains incomplete. Windows is an AP contention participant,
+three-device campaign includes migration, and satisfies the original shared-air invariant. The later collision and
+traffic stress matrix remains incomplete and is retained as informative work. Windows is an AP contention participant,
 not a qualified BLE-ACTIVATE-1 port in both roles. The detailed record is in
 `hardware/dfr1154-autonomous-node/runs/20260909-central-lifecycle/README.md`.
-The 3+ physical contention variant and final release gates remain open. Until
+The original 3+ physical contention variant is closed; final release engineering
+and public review are separate gates. Until
 those pass, `MCL Stranger-Contact 1` is
 **not guaranteed** between builders who never coordinate — and the caveat
 travels in code, as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, rather than
@@ -394,3 +396,7 @@ Stated so you can plan:
 
 The latest bounded physical record is
 `hardware/dfr1154-autonomous-node/runs/20260909-contention-closure/README.md`.
+
+The owner review of 2026-09-10 restores the original Row 35 invariant; see
+`../mcl-core/conformance/independent/20260910-private-rc/README.md`. Historical
+campaign verdicts are retained with their original, stricter test scope.
