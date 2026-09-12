@@ -122,6 +122,54 @@ static int shim_allocate_endpoint_token(void *user, uint8_t transport_id,
     return 0;
 }
 
+/* ------------------------------------------------- Base 1, arranged bearer
+ *
+ * The whole of MCL Base 1 on a bearer both machines already share. There is no
+ * discovery, no offer/accept and no migration here: two machines announce
+ * themselves on the bearer, each applies its own admission policy, and the
+ * contact is established. That is exactly the claim in section 4 of
+ * mcl-core/spec/conformance-profiles-v1.md and nothing more.
+ */
+#define MCL_BASE_STATE_IDLE        0u
+#define MCL_BASE_STATE_ANNOUNCED   1u  /* our PRESENCE is out; nobody heard yet */
+#define MCL_BASE_STATE_HEARD       2u  /* a peer PRESENCE arrived */
+#define MCL_BASE_STATE_POLICY      3u  /* waiting for admit()/refuse() */
+#define MCL_BASE_STATE_ADMITTED    4u  /* admitted; contact not yet reported */
+#define MCL_BASE_STATE_ESTABLISHED 5u
+#define MCL_BASE_STATE_REFUSED     6u
+
+/*
+ * Emit one PRESENCE on the arranged bearer, framed, at the Stable pair.
+ *
+ * Wire 1 inside Link 1 is the combination Base 1 requires and the one the node
+ * API could not previously express.
+ */
+static mcl_machine_status_t base_announce(mcl_machine_t *machine)
+{
+    uint8_t scratch[MCL_LINK_FRAME_MAX_SIZE];
+    mcl_wire_tier0_t obj;
+
+    memset(&obj, 0, sizeof(obj));
+    obj.kind = MCL_WIRE_KIND_PRESENCE;
+    obj.priority = 1u;
+    obj.source_ref = machine->config.source_ref;
+    /*
+     * machine_class is deliberately not set: major 1 does not carry it.
+     * Populating it would be silently discarded rather than transmitted.
+     */
+    obj.body.presence.capability_tag = machine->config.capability_tag;
+    obj.body.presence.ttl = machine->config.presence_ttl;
+
+    if (mcl_node_send_framed_tier0_at_major(
+            &machine->node, &obj,
+            MCL_WIRE_STABLE_MAJOR, MCL_LINK_STABLE_MAJOR,
+            MCL_LINK_CLASS_CONTACT, 0u,
+            scratch, sizeof(scratch), NULL) != MCL_SDK_OK) {
+        return MCL_MACHINE_ERR_STATE;
+    }
+    return MCL_MACHINE_OK;
+}
+
 /* --------------------------------------------------------- configuration */
 
 mcl_machine_status_t mcl_machine_config_deployment(mcl_machine_config_t *config,
@@ -132,7 +180,8 @@ mcl_machine_status_t mcl_machine_config_deployment(mcl_machine_config_t *config,
     if (config == NULL) {
         return MCL_MACHINE_ERR_NULL;
     }
-    if (deployment != MCL_DEPLOYMENT_REFERENCE_1) {
+    if (deployment != MCL_DEPLOYMENT_REFERENCE_1 &&
+        deployment != MCL_DEPLOYMENT_BASE_ARRANGED_1) {
         return MCL_MACHINE_ERR_CONFIG;
     }
     if (source_ref == 0u) {
@@ -150,8 +199,30 @@ mcl_machine_status_t mcl_machine_config_deployment(mcl_machine_config_t *config,
     config->capability_tag = 1u;
     config->presence_ttl = 60u;
 
+    if (deployment == MCL_DEPLOYMENT_BASE_ARRANGED_1) {
+        /*
+         * MCL-BASE-DEPLOYMENT-1. No bootstrap: Base 1 does not discover
+         * anything, so there is no medium to solicit on and no candidate to
+         * open. The arranged bearer is the contact's transport from the first
+         * frame, and it carries the Stable pair.
+         *
+         * Kept in step with the published profile by
+         * tools/check-base-deployment.sh, which reads both.
+         */
+        config->bootstrap_transport_id = MCL_CONTACT_TRANSPORT_IP;
+        config->bearer_count = 1u;
+        config->bearer_transport_id[0] = MCL_CONTACT_TRANSPORT_IP;
+        config->bearer_profile_id[0] = 1u;   /* IP-DATAGRAM = 1, Stable */
+        config->shared_medium = 0u;
+        config->arranged_bearer = 1u;
+        config->wire_major = MCL_WIRE_STABLE_MAJOR;
+        config->deployment_profile_id = "MCL-BASE-DEPLOYMENT-1";
+        return MCL_MACHINE_OK;
+    }
+
     /* MCL-REFERENCE-DEPLOYMENT-1. Kept in step with the published profile by
        tools/check-reference-deployment.sh, which reads both. */
+    config->wire_major = MCL_WIRE_EXPERIMENTAL_MAJOR;
     config->bootstrap_transport_id = MCL_CONTACT_TRANSPORT_AP;
     config->bearer_count = 2u;
     config->bearer_transport_id[0] = MCL_CONTACT_TRANSPORT_BLE;
@@ -184,9 +255,16 @@ mcl_machine_status_t mcl_machine_init(mcl_machine_t *machine,
      * so the last is refused here rather than discovered as a contact that
      * always stops at agreement.
      */
-    if (platform->clock_ms == NULL ||
-        platform->transport_send == NULL ||
-        platform->candidate_open == NULL) {
+    if (platform->clock_ms == NULL || platform->transport_send == NULL) {
+        return MCL_MACHINE_ERR_CONFIG;
+    }
+    /*
+     * `candidate_open` is required only where a candidate is opened. An
+     * arranged-bearer Base 1 machine never opens one -- demanding a callback
+     * that would never be called was the concrete reason the advertised
+     * one-header API could not express the ordinary shared-bearer case.
+     */
+    if (config->arranged_bearer == 0u && platform->candidate_open == NULL) {
         return MCL_MACHINE_ERR_CONFIG;
     }
     if (config->bearer_count == 0u || config->bearer_count > MCL_RDV_MAX_BEARERS) {
@@ -212,7 +290,17 @@ mcl_machine_status_t mcl_machine_init(mcl_machine_t *machine,
     machine->config = *config;
 
     memset(&node_config, 0, sizeof(node_config));
-    node_config.supported_wire_majors_mask = mcl_link_wire_major_mask(0u);
+    /*
+     * A Base 1 machine must support the Stable major, because that is what
+     * Base 1 conformance means. The reference deployment keeps major 0: its
+     * bootstrap choreography, its vectors and its retained receipts are all at
+     * the experimental major, and moving it here would change bytes that
+     * existing evidence describes.
+     */
+    node_config.supported_wire_majors_mask =
+        (config->arranged_bearer != 0u)
+            ? mcl_link_wire_major_mask(MCL_WIRE_STABLE_MAJOR)
+            : mcl_link_wire_major_mask(MCL_WIRE_EXPERIMENTAL_MAJOR);
     node_config.source_ref = config->source_ref;
     node_config.transport_id = config->bootstrap_transport_id;
     node_config.role = config->role;
@@ -220,6 +308,18 @@ mcl_machine_status_t mcl_machine_init(mcl_machine_t *machine,
     node_config.user_ctx = machine;
     if (mcl_node_init(&machine->node, &node_config) != MCL_SDK_OK) {
         return MCL_MACHINE_ERR_CONFIG;
+    }
+
+    if (config->arranged_bearer != 0u) {
+        /*
+         * No rendezvous coordinator at all. Leaving it uninitialised would be
+         * a trap for any later edit that polled it, so it is explicitly zeroed
+         * and every arranged-bearer path below refuses to touch it.
+         */
+        memset(&machine->rdv, 0, sizeof(machine->rdv));
+        machine->base_state = MCL_BASE_STATE_IDLE;
+        machine->base_peer_ref = 0u;
+        return MCL_MACHINE_OK;
     }
 
     memset(&rdv_platform, 0, sizeof(rdv_platform));
@@ -270,6 +370,18 @@ mcl_machine_status_t mcl_machine_start(mcl_machine_t *machine)
     }
     if (machine->started != 0u) {
         return MCL_MACHINE_ERR_STATE;
+    }
+    if (machine->config.arranged_bearer != 0u) {
+        mcl_machine_status_t bst;
+        machine->started = 1u;
+        machine->local_endpoint_token = 0u;
+        bst = base_announce(machine);
+        if (bst != MCL_MACHINE_OK) {
+            machine->started = 0u;
+            return bst;
+        }
+        machine->base_state = MCL_BASE_STATE_ANNOUNCED;
+        return MCL_MACHINE_OK;
     }
     if (mcl_rdv_start(&machine->rdv) != MCL_RDV_OK) {
         return MCL_MACHINE_ERR_STATE;
@@ -364,6 +476,60 @@ mcl_machine_status_t mcl_machine_poll(mcl_machine_t *machine,
         emit(out, MCL_MACHINE_EVENT_ERROR, NULL);
         out->status = MCL_MACHINE_ERR_STATE;
         return MCL_MACHINE_OK;
+    }
+
+    if (machine->config.arranged_bearer != 0u) {
+        switch (machine->base_state) {
+        case MCL_BASE_STATE_HEARD:
+            emit(out, MCL_MACHINE_EVENT_PEER_DETECTED, NULL);
+            out->transport_id = machine->config.bearer_transport_id[0];
+            out->profile_id = machine->config.bearer_profile_id[0];
+            out->peer_ref = machine->base_peer_ref;
+            /*
+             * Policy is the integrator's, never MCL's. With no callback the
+             * caller is asked; there is no third branch in which reception
+             * alone admits a peer.
+             */
+            if (machine->platform.policy_admit != NULL) {
+                int admitted = machine->platform.policy_admit(
+                    machine->platform.user, machine->base_peer_ref,
+                    machine->config.bearer_transport_id[0]);
+                machine->base_state = (admitted != 0)
+                                          ? MCL_BASE_STATE_ADMITTED
+                                          : MCL_BASE_STATE_REFUSED;
+            } else {
+                machine->base_state = MCL_BASE_STATE_POLICY;
+            }
+            return MCL_MACHINE_OK;
+
+        case MCL_BASE_STATE_POLICY:
+            emit(out, MCL_MACHINE_EVENT_POLICY_REQUIRED, NULL);
+            out->transport_id = machine->config.bearer_transport_id[0];
+            out->profile_id = machine->config.bearer_profile_id[0];
+            out->peer_ref = machine->base_peer_ref;
+            /* Held here until admit() or refuse() answers. */
+            machine->base_state = MCL_BASE_STATE_POLICY + 0x10u;
+            return MCL_MACHINE_OK;
+
+        case MCL_BASE_STATE_ADMITTED:
+            emit(out, MCL_MACHINE_EVENT_CONTACT_ESTABLISHED, NULL);
+            out->transport_id = machine->config.bearer_transport_id[0];
+            out->profile_id = machine->config.bearer_profile_id[0];
+            out->peer_ref = machine->base_peer_ref;
+            machine->base_state = MCL_BASE_STATE_ESTABLISHED;
+            return MCL_MACHINE_OK;
+
+        case MCL_BASE_STATE_REFUSED:
+            emit(out, MCL_MACHINE_EVENT_CONTACT_LOST, NULL);
+            out->peer_ref = machine->base_peer_ref;
+            machine->base_peer_ref = 0u;
+            machine->base_state = MCL_BASE_STATE_ANNOUNCED;
+            return MCL_MACHINE_OK;
+
+        default:
+            emit(out, MCL_MACHINE_EVENT_NONE, NULL);
+            return MCL_MACHINE_OK;
+        }
     }
 
     memset(&ev, 0, sizeof(ev));
@@ -488,6 +654,32 @@ mcl_machine_status_t mcl_machine_receive(mcl_machine_t *machine,
     if (machine->started == 0u) {
         return MCL_MACHINE_ERR_STATE;
     }
+    if (machine->config.arranged_bearer != 0u) {
+        mcl_link_frame_t frame;
+        mcl_wire_tier0_t obj;
+        uint8_t has_object = 0u;
+        size_t consumed = 0u;
+
+        if (mcl_node_receive_framed(&machine->node, transport_id, data, size,
+                                    &frame, &obj, &has_object, &consumed)
+            != MCL_SDK_OK) {
+            /* Undecodable bytes are normal on a real bearer. Not an error. */
+            return MCL_MACHINE_OK;
+        }
+        if (has_object == 0u || obj.kind != MCL_WIRE_KIND_PRESENCE) {
+            return MCL_MACHINE_OK;
+        }
+        if (obj.source_ref == machine->config.source_ref) {
+            /* Our own announcement echoed back by a loopback bearer. */
+            return MCL_MACHINE_OK;
+        }
+        if (machine->base_state == MCL_BASE_STATE_ANNOUNCED) {
+            machine->base_peer_ref = obj.source_ref;
+            machine->base_state = MCL_BASE_STATE_HEARD;
+        }
+        return MCL_MACHINE_OK;
+    }
+
     if (mcl_rdv_deliver(&machine->rdv, transport_id, data, size) != MCL_RDV_OK) {
         /*
          * Not an error worth propagating. A public medium carries everything,
@@ -544,6 +736,13 @@ mcl_machine_status_t mcl_machine_candidate_refused(mcl_machine_t *machine)
 
 mcl_machine_status_t mcl_machine_admit(mcl_machine_t *machine)
 {
+    if (machine != NULL && machine->config.arranged_bearer != 0u) {
+        if (machine->base_state != (MCL_BASE_STATE_POLICY + 0x10u)) {
+            return MCL_MACHINE_ERR_STATE;
+        }
+        machine->base_state = MCL_BASE_STATE_ADMITTED;
+        return MCL_MACHINE_OK;
+    }
     if (machine == NULL) {
         return MCL_MACHINE_ERR_NULL;
     }
@@ -555,6 +754,13 @@ mcl_machine_status_t mcl_machine_admit(mcl_machine_t *machine)
 
 mcl_machine_status_t mcl_machine_refuse(mcl_machine_t *machine)
 {
+    if (machine != NULL && machine->config.arranged_bearer != 0u) {
+        if (machine->base_state != (MCL_BASE_STATE_POLICY + 0x10u)) {
+            return MCL_MACHINE_ERR_STATE;
+        }
+        machine->base_state = MCL_BASE_STATE_REFUSED;
+        return MCL_MACHINE_OK;
+    }
     if (machine == NULL) {
         return MCL_MACHINE_ERR_NULL;
     }
@@ -562,6 +768,14 @@ mcl_machine_status_t mcl_machine_refuse(mcl_machine_t *machine)
         return MCL_MACHINE_ERR_STATE;
     }
     return MCL_MACHINE_OK;
+}
+
+mcl_node_t *mcl_machine_node(mcl_machine_t *machine)
+{
+    if (machine == NULL) {
+        return NULL;
+    }
+    return &machine->node;
 }
 
 const char *mcl_machine_state_name(const mcl_machine_t *machine)

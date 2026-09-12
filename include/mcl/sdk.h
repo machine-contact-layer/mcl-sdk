@@ -249,6 +249,37 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
     size_t *bytes_sent);
 
 /*
+ * Send a Tier-0 object in a Link frame at explicitly chosen majors.
+ *
+ * Wire and Link version independently, so both are named. `MCL Base 1` (see
+ * mcl-core/spec/conformance-profiles-v1.md section 4) requires Wire major 1
+ * carried inside Link major 1; mcl_node_send_framed_tier0 emits the
+ * experimental pair and cannot express that combination.
+ *
+ * Refuses, rather than substituting a workable major:
+ *
+ *   - an unassigned Wire or Link major;
+ *   - a Candidate object at the Stable Wire major -- HAZARD, REQUEST,
+ *     AUTHORITY_CLAIM and DEGRADED_STATE are not carried at major 1, and the
+ *     refusal is MCL_SDK_ERR_WIRE_FAILURE.
+ *
+ * PRESENCE is not the same bytes at both majors: major 1 drops machine_class,
+ * so the same object encodes to 11 bytes at major 0 and 10 at major 1. A
+ * caller moving to major 1 should stop populating that field rather than
+ * expect it to travel.
+ */
+mcl_sdk_status_t mcl_node_send_framed_tier0_at_major(
+    mcl_node_t *node,
+    const mcl_wire_tier0_t *object,
+    uint8_t wire_major,
+    uint8_t link_major,
+    mcl_link_frame_class_t frame_class,
+    uint8_t flags,
+    uint8_t *scratch,
+    size_t scratch_capacity,
+    size_t *bytes_sent);
+
+/*
  * Decode a received Link frame and, when it carries a Tier-0 object, decode
  * that too.
  *

@@ -1,0 +1,16 @@
+# Code owners for mcl-sdk.
+#
+# Every line here is a REVIEW requirement, not a claim of authorship. It takes
+# effect only once branch protection requires code-owner review, which is
+# applied after the repositories become public -- GitHub Free does not offer
+# protection on a private repository.
+#
+# The last matching pattern wins, so the specific paths below override the
+# catch-all.
+
+* @0j0bit @sed-boi
+
+# The surface an OEM integrates against, and the packaging they receive.
+/include/       @0j0bit
+/packaging/     @0j0bit
+/evidence/      @0j0bit

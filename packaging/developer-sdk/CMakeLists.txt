@@ -50,6 +50,15 @@ if(NOT WIN32)
 endif()
 
 if(MCL_DEVELOPER_SDK_BUILD_EXAMPLE)
+    # MCL Base 1 on an arranged bearer: the ordinary case, and the first
+    # thing QUICKSTART.md asks a new integrator to run.
+    add_executable(mcl_base_arranged_bearer examples/base_arranged_bearer.c)
+    target_link_libraries(mcl_base_arranged_bearer PRIVATE mcl_sdk)
+    set_target_properties(mcl_base_arranged_bearer PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
     add_executable(mcl_first_contact examples/first_contact.c)
     target_link_libraries(mcl_first_contact PRIVATE mcl_sdk)
     set_target_properties(mcl_first_contact PROPERTIES

@@ -7,6 +7,27 @@
  * Everything below this header is MCL's problem. Everything above it is the
  * machine's. That sentence is the entire design brief.
  *
+ * TWO DEPLOYMENTS, AND THE ONE YOU PROBABLY WANT
+ *
+ * `MCL_DEPLOYMENT_BASE_ARRANGED_1` is `MCL Base 1`: a bearer both machines
+ * already share. Provisioned fleets, manufacture-paired products, a bearer
+ * arranged out of band. It needs no bootstrap medium, no `candidate_open` and
+ * no randomness, and it emits Wire major 1 inside Link major 1 -- the Stable
+ * pair that Base 1 conformance is defined on. Start at
+ * `examples/base_arranged_bearer.c`.
+ *
+ * `MCL_DEPLOYMENT_REFERENCE_1` is `MCL Stranger-Contact 1`: everything Base 1
+ * has, plus a zero-prior acoustic rendezvous path for machines that have never
+ * met. It is Candidate, not Stable, and it is the one that needs the
+ * microphone, the speaker, the contention discipline and the candidate bearer.
+ *
+ * This header used to offer only the second. That was a real defect rather
+ * than a documentation gap: `mcl_machine_init()` demanded a `candidate_open`
+ * callback an arranged-bearer machine would never call, and no node-level send
+ * path could put a Stable Wire object inside a Link frame at all, so an
+ * integrator reading "Base 1 is the v1.0 stable floor" could not build one
+ * through the surface that sentence pointed at.
+ *
  * WHY THIS EXISTS WHEN mcl/rendezvous.h ALREADY DID THE HARD PART
  *
  * `mcl_rdv_*` is the protocol: solicitation epochs, contention, ordered bearer
@@ -268,7 +289,31 @@ typedef enum {
      * `tools/check-reference-deployment.sh` fails the build if this constant
      * and that file ever disagree.
      */
-    MCL_DEPLOYMENT_REFERENCE_1 = 1
+    MCL_DEPLOYMENT_REFERENCE_1 = 1,
+
+    /*
+     * MCL-BASE-DEPLOYMENT-1, as published in
+     * mcl-core/deployments/MCL-BASE-DEPLOYMENT-1.json:
+     *
+     *   Wire 1 + Link 1 + MCL Base 1
+     *   arranged   IP-DATAGRAM profile 1 on transport 2, already reachable
+     *   bootstrap  none -- there is no rendezvous in Base 1
+     *   security   none, and v1 has none to offer
+     *
+     * This is the ORDINARY case: a fleet provisioned by one owner, machines
+     * paired at manufacture, a bearer arranged out of band. It requires no
+     * microphone, no speaker, no discovery and no `candidate_open`, because
+     * nothing is being discovered and no bearer is being opened -- the bearer
+     * is already there.
+     *
+     * Unlike the reference deployment this one emits Wire major 1 inside Link
+     * major 1, which is what `MCL Base 1` conformance actually requires
+     * (mcl-core/spec/conformance-profiles-v1.md section 4.1).
+     *
+     * `tools/check-base-deployment.sh` fails the build if this constant and
+     * that file ever disagree.
+     */
+    MCL_DEPLOYMENT_BASE_ARRANGED_1 = 2
 } mcl_deployment_t;
 
 typedef struct {
@@ -294,6 +339,18 @@ typedef struct {
     uint8_t bearer_transport_id[MCL_RDV_MAX_BEARERS];
     uint8_t bearer_profile_id[MCL_RDV_MAX_BEARERS];
     uint8_t shared_medium;
+    /*
+     * Non-zero for an arranged-bearer `MCL Base 1` machine: the bearer is
+     * already usable, so there is no rendezvous, no bootstrap medium and no
+     * candidate to open. `bearer_transport_id[0]` IS the bearer.
+     */
+    uint8_t arranged_bearer;
+    /*
+     * Wire major this machine emits. Set by mcl_machine_config_deployment():
+     * 1 for the Base deployment, 0 for the reference deployment, whose
+     * bootstrap path and retained receipts are at the experimental major.
+     */
+    uint8_t wire_major;
     /* For logs and conformance declarations. Not interpreted. */
     const char *deployment_profile_id;
 } mcl_machine_config_t;
@@ -308,6 +365,9 @@ typedef struct {
     uint8_t candidate_open_transport;
     uint8_t awaiting_candidate;
     uint8_t pending_platform_error;
+    /* Arranged-bearer Base 1 only; the rendezvous coordinator is unused. */
+    uint8_t base_state;
+    uint32_t base_peer_ref;
 } mcl_machine_t;
 
 /*
@@ -354,6 +414,21 @@ mcl_machine_status_t mcl_machine_candidate_refused(mcl_machine_t *machine);
 /* Answers to MCL_MACHINE_EVENT_POLICY_REQUIRED. */
 mcl_machine_status_t mcl_machine_admit(mcl_machine_t *machine);
 mcl_machine_status_t mcl_machine_refuse(mcl_machine_t *machine);
+
+/*
+ * The node underneath, for a Base 1 integration that must send or receive
+ * Stable Tier-0 objects itself.
+ *
+ * Base 1 is contact and control, not an application payload channel: the
+ * objects a conformant Base 1 machine exchanges are PRESENCE, TRANSPORT_OFFER
+ * and TRANSPORT_ACCEPT. Use mcl_node_send_framed_tier0_at_major() with
+ * MCL_WIRE_STABLE_MAJOR and MCL_LINK_STABLE_MAJOR; see
+ * examples/base_arranged_bearer.c.
+ *
+ * Returns NULL for a NULL machine. The node belongs to the machine and must
+ * not outlive it.
+ */
+mcl_node_t *mcl_machine_node(mcl_machine_t *machine);
 
 /* For a display or a log. Never a control input. */
 const char *mcl_machine_state_name(const mcl_machine_t *machine);

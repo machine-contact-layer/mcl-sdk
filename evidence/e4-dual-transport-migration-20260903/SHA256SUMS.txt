@@ -1,3 +1,26 @@
-A7C0F9B4CD5D551BB736D07CC1540A73016BDEBF4FDCA6E15875C5DAC4FBB041  board-serial.log
-D02EB22489BC25F8AA6D747E00E55DB64B885DBBF002C0457CBB2FE9E69CC7D6  host-output.txt
+# CORRECTED 2026-09-12. The digests below are taken over the bytes as
+# committed. The originals are preserved verbatim at the bottom of this
+# file and nothing in this directory was edited to make them agree.
+#
+# WHY THEY DID NOT AGREE. These sums were computed on the capture
+# machine before the files entered Git, while the logs still carried the
+# CRLF framing a board terminal emits. Git stored them LF -- see
+# .gitattributes, which records that the measurement is the text a line
+# carries and not the framing around it -- so the recorded digest
+# described bytes that were never committed. Nothing verified these
+# files, so it went unnoticed from the day they were committed until a
+# pre-publication sweep on 2026-09-12. tools/check-evidence-digests.sh
+# now runs in the gates so it cannot recur.
+#
+# The measurements themselves are untouched. No .wav capture failed:
+# every mismatch was a text log or CSV, which is exactly the signature
+# of a line-ending normalisation rather than a corrupted recording.
+
+8362D8B40C1A59E96F4D71C898F88B43452A70865366C76843E16BB4725C79BD  board-serial.log
+D6C0216499824CC2CA591ADCFBAA0C38D56A298209BE29A748A02DBB6BCBD194  host-output.txt
 7E9103FF53A9AFB1391DAF4455385F73E4932EBDF87347B7807B98C2894F0ACE  README.md
+
+# ---------------- original digests, as first recorded ----------------
+# A7C0F9B4CD5D551BB736D07CC1540A73016BDEBF4FDCA6E15875C5DAC4FBB041  board-serial.log
+# D02EB22489BC25F8AA6D747E00E55DB64B885DBBF002C0457CBB2FE9E69CC7D6  host-output.txt
+# 7E9103FF53A9AFB1391DAF4455385F73E4932EBDF87347B7807B98C2894F0ACE  README.md

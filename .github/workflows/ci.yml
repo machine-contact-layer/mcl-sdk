@@ -1,0 +1,89 @@
+# Build and test mcl-sdk.
+#
+# CI does not reimplement the gates. It checks out the tree and runs the same
+# CMake build and ctest suite a contributor runs locally, so a green tick here
+# and a green run on a laptop mean the same thing. The heavier
+# multi-toolchain/sanitizer matrix lives in mcl-core's release-gates workflow,
+# not on every pull request.
+#
+# Policy, enforced by tools/check-publication-readiness.sh and
+# tools/go-no-go-audit.sh:
+#
+#   - least-privilege token: contents: read, nothing else
+#   - no pull_request_target, so fork code never runs with our credentials
+#   - no secrets reachable from a pull_request trigger
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    steps:
+      - name: Check out mcl-sdk
+        uses: actions/checkout@v4
+        with:
+          path: mcl-sdk
+
+      # mcl-wire is a sibling source dependency: mcl-sdk's CMakeLists reads
+      # ../mcl-wire directly rather than vendoring a copy, so the checkout
+      # layout has to match a developer's working tree.
+      - name: Check out mcl-wire
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/mcl-wire
+          path: mcl-wire
+
+      # mcl-link is a sibling source dependency: mcl-sdk's CMakeLists reads
+      # ../mcl-link directly rather than vendoring a copy, so the checkout
+      # layout has to match a developer's working tree.
+      - name: Check out mcl-link
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/mcl-link
+          path: mcl-link
+
+      # mcl-ip is a sibling source dependency: mcl-sdk's CMakeLists reads
+      # ../mcl-ip directly rather than vendoring a copy, so the checkout
+      # layout has to match a developer's working tree.
+      - name: Check out mcl-ip
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/mcl-ip
+          path: mcl-ip
+
+      # mcl-ble is a sibling source dependency: mcl-sdk's CMakeLists reads
+      # ../mcl-ble directly rather than vendoring a copy, so the checkout
+      # layout has to match a developer's working tree.
+      - name: Check out mcl-ble
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/mcl-ble
+          path: mcl-ble
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+        run: cmake -S mcl-sdk -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

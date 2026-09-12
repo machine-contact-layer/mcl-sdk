@@ -205,6 +205,22 @@ if(MCL_SDK_BUILD_TESTS)
         C_STANDARD 99
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
+
+    # MCL Base 1 on an arranged bearer: Wire 1 in Link 1, no rendezvous.
+    add_executable(mcl_sdk_base_arranged_bearer examples/base_arranged_bearer.c)
+    target_link_libraries(mcl_sdk_base_arranged_bearer PRIVATE mcl_sdk)
+    set_target_properties(mcl_sdk_base_arranged_bearer PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
+    add_executable(mcl_sdk_test_base1 tests/test_base1.c)
+    target_link_libraries(mcl_sdk_test_base1 PRIVATE mcl_sdk)
+    set_target_properties(mcl_sdk_test_base1 PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+    add_test(NAME mcl_sdk_base1 COMMAND mcl_sdk_test_base1)
 endif()
 
 # --- Host harness shared library ---

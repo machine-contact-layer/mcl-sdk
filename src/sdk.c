@@ -366,9 +366,20 @@ mcl_sdk_status_t mcl_node_link_authorize_context(
 
 /* ---------- Framed contact path ---------- */
 
-mcl_sdk_status_t mcl_node_send_framed_tier0(
+/*
+ * The one implementation behind both framed-send entry points.
+ *
+ * The majors are parameters rather than constants because Wire and Link
+ * version INDEPENDENTLY: a Base 1 deployment needs Wire 1 inside Link 1, and
+ * before this existed the node API could only emit Wire 0 inside Link 0, which
+ * left the Stable pair reachable from the rendezvous and binding code but not
+ * from the general node surface an integrator uses.
+ */
+static mcl_sdk_status_t node_send_framed_at_major(
     mcl_node_t *node,
     const mcl_wire_tier0_t *object,
+    uint8_t wire_major,
+    uint8_t link_major,
     mcl_link_frame_class_t frame_class,
     uint8_t flags,
     uint8_t *scratch,
@@ -406,8 +417,14 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
         return MCL_SDK_ERR_QUIESCED;
     }
 
-    wst = mcl_wire_tier0_encode(object, wire_buf, sizeof(wire_buf), &wire_written);
+    wst = mcl_wire_tier0_encode_at_major(wire_major, object, wire_buf,
+                                         sizeof(wire_buf), &wire_written);
     if (wst != MCL_WIRE_OK) {
+        /*
+         * Includes the Candidate-object-at-the-Stable-major refusal. A caller
+         * asking for major 1 with a HAZARD is refused here rather than having
+         * the object quietly demoted to a major that does carry it.
+         */
         return MCL_SDK_ERR_WIRE_FAILURE;
     }
 
@@ -459,7 +476,8 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
         frame.sequence = node->tx_sequence;
     }
 
-    lst = mcl_link_frame_encode(&frame, scratch, scratch_capacity, &frame_written);
+    lst = mcl_link_frame_encode_at_major(link_major, &frame, scratch,
+                                         scratch_capacity, &frame_written);
     if (lst != MCL_LINK_OK) {
         return MCL_SDK_ERR_FRAME_FAILURE;
     }
@@ -485,6 +503,48 @@ mcl_sdk_status_t mcl_node_send_framed_tier0(
     }
 
     return MCL_SDK_OK;
+}
+
+/*
+ * The historical entry point. Its majors are FROZEN at the experimental pair.
+ *
+ * v1.0 promises source compatibility (V1_SCOPE 4.5), and this function's bytes
+ * are what every pre-major-1 caller and every retained receipt already contain
+ * -- including the 104-migration continuity campaign. Retargeting it at the
+ * Stable pair would silently change what an existing integration puts on the
+ * wire, which is the one way to break compatibility that nobody can see.
+ * test_sdk_framed.c pins this.
+ */
+mcl_sdk_status_t mcl_node_send_framed_tier0(
+    mcl_node_t *node,
+    const mcl_wire_tier0_t *object,
+    mcl_link_frame_class_t frame_class,
+    uint8_t flags,
+    uint8_t *scratch,
+    size_t scratch_capacity,
+    size_t *bytes_sent)
+{
+    return node_send_framed_at_major(node, object,
+                                     MCL_WIRE_EXPERIMENTAL_MAJOR,
+                                     MCL_LINK_FRAME_MAJOR,
+                                     frame_class, flags, scratch,
+                                     scratch_capacity, bytes_sent);
+}
+
+mcl_sdk_status_t mcl_node_send_framed_tier0_at_major(
+    mcl_node_t *node,
+    const mcl_wire_tier0_t *object,
+    uint8_t wire_major,
+    uint8_t link_major,
+    mcl_link_frame_class_t frame_class,
+    uint8_t flags,
+    uint8_t *scratch,
+    size_t scratch_capacity,
+    size_t *bytes_sent)
+{
+    return node_send_framed_at_major(node, object, wire_major, link_major,
+                                     frame_class, flags, scratch,
+                                     scratch_capacity, bytes_sent);
 }
 
 mcl_sdk_status_t mcl_node_receive_framed(

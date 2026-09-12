@@ -60,6 +60,7 @@ do
     cp "$source" "$OUT/src/"
 done
 
+cp "$ROOT/mcl-sdk/examples/base_arranged_bearer.c" "$OUT/examples/"
 cp "$ROOT/mcl-sdk/examples/first_contact.c" "$OUT/examples/"
 cp "$ROOT/mcl-sdk/examples/resource_report.c" "$OUT/examples/"
 cp "$ROOT/mcl-sdk/tests/test_machine.c" "$OUT/tests/"

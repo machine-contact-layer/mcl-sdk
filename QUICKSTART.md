@@ -93,6 +93,48 @@ target_link_libraries(my_machine PRIVATE mcl::mcl_sdk)
 
 ## 04 Run two machines that already share a bearer
 
+This is **MCL Base 1**: the ordinary case, and the v1.0 stable floor. Nothing is
+discovered, no bearer is opened, and there is no microphone in sight.
+
+```sh
+./build/mcl_base_arranged_bearer
+```
+
+```text
+MCL Base 1, MCL-BASE-DEPLOYMENT-1
+Two machines on a bearer that is already there. No rendezvous.
+
+  profile        MCL-BASE-DEPLOYMENT-1
+  wire major     1  (Stable)
+  bearer         transport 2, profile 1
+
+  A  PEER_DETECTED, peer B2B2B2B2
+  B  PEER_DETECTED, peer A1A1A1A1
+  A  CONTACT_ESTABLISHED, peer B2B2B2B2
+  B  CONTACT_ESTABLISHED, peer A1A1A1A1
+  A  sent PRESENCE, Wire 1 in Link 1, 18 bytes
+  B  decoded PRESENCE, capability_tag 00BEEF
+  A  HAZARD at Wire 1 refused, as a Candidate object must be
+```
+
+**Be clear about what that is.** Both machines are in one process on an
+in-memory bearer and a counted clock. The bytes are the real Stable pair --
+Wire major 1 inside Link major 1, which is what Base 1 conformance requires --
+but nothing physical is established.
+
+**And be clear about what Base 1 carries.** The objects are `PRESENCE`,
+`TRANSPORT_OFFER` and `TRANSPORT_ACCEPT`. There is no send-my-payload call
+because Base 1 is contact and control, not an application message bus. An
+application with its own messages hands off to its own protocol.
+
+The source is [`examples/base_arranged_bearer.c`](examples/base_arranged_bearer.c).
+
+## 05 Optional: watch first contact between strangers
+
+This is **MCL Stranger-Contact 1**, which extends Base 1 with a zero-prior
+rendezvous path. It is Candidate, not Stable, and unlike section 04 it needs a
+bootstrap medium and a `candidate_open` callback.
+
 ```sh
 ./build/mcl_first_contact
 ```
@@ -119,7 +161,7 @@ interoperability. It is the API and the shape of an integration.
 The source is [`examples/first_contact.c`](examples/first_contact.c), and the
 part that is yours is 60 lines.
 
-## 05 Optional: observe Stranger-Contact on real hardware
+## 06 Optional: observe Stranger-Contact on real hardware
 
 Two machines, two radios, no peer configuration anywhere:
 
@@ -132,7 +174,7 @@ Two machines, two radios, no peer configuration anywhere:
   a laptop with a Bluetooth radio can check what that board puts on the air
   against the profile, sharing no code with it.
 
-## 06 Integrate your own platform
+## 07 Integrate your own platform
 
 **Eight operations. Six required, two optional.** If porting MCL to a machine
 ever needs fifty, the facade is not finished — that is the standard
@@ -190,7 +232,7 @@ success or `mcl_machine_candidate_refused()` when the asynchronous attempt
 fails.
 Nothing is emitted on the bearer before that call.
 
-## 07 Run the conformance tests
+## 08 Run the conformance tests
 
 You do not have to trust this repository's CI. The release developer package
 ships its machine-contract test and runs it locally:
@@ -212,7 +254,7 @@ python3 ../mcl-core/conformance/independent/test_independent.py   # C4
 major-1 vectors, the ICS, and an independent implementation in Python that
 shares no code with the C.
 
-## 08 Deployment and security considerations
+## 09 Deployment and security considerations
 
 **Pick a deployment profile, do not invent one.**
 [`MCL-REFERENCE-DEPLOYMENT-1`](../mcl-core/deployments/MCL-REFERENCE-DEPLOYMENT-1.json)
