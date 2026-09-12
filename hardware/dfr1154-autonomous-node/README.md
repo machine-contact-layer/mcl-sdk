@@ -288,20 +288,16 @@ Verified on hardware so far:
   [`mcl-ble/hardware/host-ble-probe/`](../../../mcl-ble/hardware/host-ble-probe/);
 - a 40-byte frame crosses the GATT link as three fragments at the 23-byte
   minimum MTU, in both directions, byte-identical.
-- the first Android/DFR zero-prior attempt proved acoustic reception in both
-  directions but failed after one lost acceptance exposed a board-adapter
-  lifecycle defect; the negative receipt and corrective image are retained in
-  [`runs/20260909-android-dfr-zero-prior-attempt-01.md`](runs/20260909-android-dfr-zero-prior-attempt-01.md).
-- the corrected image then reached the exact Android BLE advertisement in two
-  zero-prior attempts, but its central connection was refused four times per
-  run. The repeated negative result and its resource-envelope boundary are
-  retained in
-  [`runs/20260909-android-dfr-zero-prior-attempts-02-03.md`](runs/20260909-android-dfr-zero-prior-attempts-02-03.md).
+- the early lifecycle defects and refused central attempts are retained as
+  negative evidence in the dated run records below;
+- the corrected both-role DFR1154/Android campaign reached
+  `CONTACT_MIGRATED` with explicit policy admission, and the bounded
+  three-machine shared-air campaign closed the v1 contention floor. Windows is
+  an acoustic participant, not a BLE implementation.
 
-Not established here, and not claimable until it is: a **complete zero-prior
-run** — acoustic first contact through BLE activation to `CONTACT_MIGRATED`
-— needs a second machine with a microphone, a speaker and a BLE radio. That is
-the second builder, not this board.
+The earlier statement that a complete zero-prior run had not been established
+is historical and superseded by the retained closure receipts; it is not a
+current release blocker.
 
 ## Activation correction and COM3 diagnostics (2026-09-09)
 

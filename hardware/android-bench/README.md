@@ -1,8 +1,8 @@
 # MCL Android bench
 
 A lab instrument. An Android phone as a second physical MCL machine, so that
-protocol claims can be tested between two independent implementations on two
-independent clocks rather than between a board and the laptop that programmed
+protocol behavior can be tested between two independent physical platforms on
+two independent clocks rather than between a board and the laptop that programmed
 it.
 
 **Not a product, not an SDK sample, and not a conformance implementation.**

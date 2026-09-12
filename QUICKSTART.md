@@ -91,15 +91,15 @@ find_package(mcl_sdk REQUIRED)
 target_link_libraries(my_machine PRIVATE mcl::mcl_sdk)
 ```
 
-## 04 Run two machines
+## 04 Run two machines that already share a bearer
 
 ```sh
 ./build/mcl_first_contact
 ```
 
 ```text
-MCL first contact, MCL-REFERENCE-DEPLOYMENT-1
-Two machines, no shared configuration, no peer addresses.
+MCL contact continuity, MCL-REFERENCE-DEPLOYMENT-1
+Two machines using an agreed simulated bearer.
 
   A  heard a peer, correlation B2B2B2B2
   B  open bearer 3: scanning for the peer's token 7913F31C
@@ -119,7 +119,7 @@ interoperability. It is the API and the shape of an integration.
 The source is [`examples/first_contact.c`](examples/first_contact.c), and the
 part that is yours is 60 lines.
 
-## 05 Observe first contact on real hardware
+## 05 Optional: observe Stranger-Contact on real hardware
 
 Two machines, two radios, no peer configuration anywhere:
 
@@ -147,7 +147,7 @@ ever needs fifty, the facade is not finished — that is the standard
 | `self_transmitting` | on a shared medium | is that me |
 | `candidate_open` | yes | make the agreed bearer usable |
 | `candidate_close` | no | release it |
-| `policy_admit` | no | admit this stranger? |
+| `policy_admit` | no | admit this proposed contact? |
 
 ```c
 mcl_machine_config_t config;

@@ -39,14 +39,11 @@ is informative robustness work, and public review remains open. The caveat there
 in code as `MCL_CONFORMANCE_CAVEAT_BOOTSTRAP_CANDIDATE`, not only in prose. See
 §4 for what that means for your product.
 
-The corrected zero-prior campaign reached an exact air-learned BLE
-advertisement twice, then the DFR central failed to establish the connection in
-four attempts per run. Those retries allocated additional clients and were not
-independent repetitions. The adapter also reconstructed the discovered native
-BLE address in reverse byte order; the corrected image now tests address
-identity at boot and keeps activation off the MCL polling task. Prior
-board-peripheral GATT carriage remains valid component evidence; they do not convert this failed full-facade lifecycle into
-a migration pass.
+The earlier central-connection failures, extra-client allocation, and reversed
+native-address defect remain retained negative evidence. The corrected image
+tests address identity at boot and keeps activation off the MCL polling task;
+the subsequent both-role lifecycle campaign is the current result. Do not read
+the historical failure as the current lifecycle verdict.
 
 ## 1. How do I install MCL?
 
@@ -171,9 +168,9 @@ answer, and you receive one event. See [`QUICKSTART.md`](QUICKSTART.md) §06.
 
 **Both profiles are Candidate, not Stable, and the reason is not a formality.**
 
-`AP-BOOTSTRAP-1` and `BLE-ACTIVATE-1` remain Candidate because component-level
-bidirectional physical evidence is not the builder-interoperability acceptance
-test. The DFR1154 and Android implementations have exchanged acoustic bootstrap
+`AP-BOOTSTRAP-1` and `BLE-ACTIVATE-1` remain Candidate because private physical
+evidence is not independent external implementation or public review. The
+DFR1154 and Android adapters have exchanged acoustic bootstrap
 objects and reached two-device migration in both BLE roles. The retained
 three-device campaign includes migration, and satisfies the original shared-air invariant. The later collision and
 traffic stress matrix remains incomplete and is retained as informative work. Windows is an AP contention participant,
@@ -202,7 +199,7 @@ deployment that names BLE as a candidate bearer, without touching Stable
 - If they genuinely have nothing in common, `MCL-REFERENCE-DEPLOYMENT-1` is the
   path, and you are adopting two Candidate profiles knowingly. They are
   normatively complete and implementable from their text; what they lack is a
-  second implementation and a second transmitter class.
+  independent external implementation/review and a Stable profile assignment.
 
 ## 5. How do I select a common bearer, and move to it?
 
