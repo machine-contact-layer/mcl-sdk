@@ -30,6 +30,15 @@ concurrency:
 
 jobs:
   build:
+    # Sibling source dependencies are checked out from the same organisation.
+    # While a repository is PRIVATE that cannot work: the automatic GITHUB_TOKEN
+    # is scoped to this repository alone and cannot read a private sibling, and
+    # no org secret is used here because a secret reachable from a pull_request
+    # trigger is exactly what the CI policy forbids. A valid token CAN read any
+    # PUBLIC repository, so this job starts working the moment the repositories
+    # become public -- which is when it is needed, since there are no outside
+    # contributors before then. It is skipped rather than left to fail red.
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
