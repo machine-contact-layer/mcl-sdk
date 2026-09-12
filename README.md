@@ -1,11 +1,80 @@
-# MCL SDK
+<p align="center">
+  <img src=".github/banner.png" alt="OJOBIT" width="100%">
+</p>
 
-Product-facing reference SDK for the **Machine Contact Layer**. The default
-integration is `mcl/machine.h`: the application supplies platform operations
-and receives contact events; MCL owns contact/session state, negotiation,
-validation, migration, retries, and cleanup. In MCL Base 1 the peers already
-share a bearer and discovery is not required. Optional Stranger-Contact adds
-zero-prior rendezvous when no bearer is shared.
+<h1 align="center">MCL SDK</h1>
+
+<p align="center"><strong>Build a machine that can meet another machine. One CMake project, no heap, no libc.</strong></p>
+
+<p align="center">
+  <a href="https://github.com/machine-contact-layer/mcl-sdk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/machine-contact-layer/mcl-sdk/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/machine-contact-layer/mcl-sdk/blob/main/LICENSE"><img alt="License Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
+  <img alt="C99 freestanding" src="https://img.shields.io/badge/C99-freestanding-informational">
+  <img alt="status" src="https://img.shields.io/badge/status-Public%20Candidate-orange">
+</p>
+
+<p align="center">
+  <a href="https://github.com/machine-contact-layer/mcl-sdk/blob/main/QUICKSTART.md"><b>Quickstart</b></a> ·
+  <a href="https://github.com/machine-contact-layer/mcl-sdk/tree/main/examples"><b>Examples</b></a> ·
+  <a href="https://github.com/machine-contact-layer/mcl-core"><b>Specifications</b></a> ·
+  <a href="https://github.com/machine-contact-layer/mcl-core/blob/main/REPORTING.md"><b>Report a defect</b></a>
+</p>
+
+---
+
+> **This is the repository to start from.** Everything else in the
+> organization is the specification MCL is defined by; this is the code you
+> link against.
+
+## Run it in about a minute
+
+```sh
+git clone https://github.com/machine-contact-layer/mcl-sdk
+cd mcl-sdk
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./build/examples/base_arranged_bearer
+```
+
+Two machines meet over a bearer they already share, exchange presence, admit
+each other by local policy, and refuse an object they are not willing to carry
+— `MCL Base 1`, end to end, with no network, no microphone and no pairing step.
+
+## What using it looks like
+
+```c
+#include "mcl/machine.h"
+
+mcl_machine_t        machine;
+mcl_machine_config_t cfg;
+
+/* Base 1: a bearer you already have. No discovery, no rendezvous. */
+mcl_machine_config_deployment(&cfg, MCL_DEPLOYMENT_BASE_ARRANGED_1, "node-a");
+
+mcl_machine_init(&machine, &cfg, &platform);   /* you supply tx/rx */
+mcl_machine_start(&machine);
+
+mcl_machine_event_t ev;
+while (mcl_machine_poll(&machine, &ev) == MCL_MACHINE_OK) {
+    if (ev.kind == MCL_MACHINE_EVENT_PEER_DETECTED) {
+        mcl_machine_admit(&machine);           /* your policy decides */
+    }
+}
+```
+
+You provide two functions — send bytes, receive bytes — over whatever you
+already have: a socket, a UART, a BLE characteristic, a test harness. MCL never
+allocates; every buffer is yours.
+
+## Where to go next
+
+| You want to | Go to |
+| --- | --- |
+| A guided walkthrough | [`QUICKSTART.md`](QUICKSTART.md) |
+| More examples | [`examples/`](examples/) |
+| Port it to your platform | `QUICKSTART.md` section 07 |
+| Know what a byte means | [mcl-wire](https://github.com/machine-contact-layer/mcl-wire) |
+| Know what is claimed | [conformance/ICS.md](https://github.com/machine-contact-layer/mcl-core/blob/main/conformance/ICS.md) |
 
 The primary reference SDK is a portable C99 implementation designed to run from resource-constrained microcontrollers through embedded systems and hosted applications without changing the protocol contract.
 
