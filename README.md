@@ -1,10 +1,16 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/machine-contact-layer/.github/main/profile/banner.png" alt="OJOBIT" width="100%">
+  <img src="https://raw.githubusercontent.com/machine-contact-layer/.github/main/profile/banner.png" alt="Machine Contact Layer (MCL) banner: black and white checkerboard with the OJOBIT wordmark" width="100%">
 </p>
 
 <h1 align="center">MCL SDK</h1>
 
 <p align="center"><strong>Build a machine that can meet another machine. Freestanding C99: no heap, no libc.</strong></p>
+
+<p align="center">
+  Portable C99 SDK for the Machine Contact Layer (MCL): add machine-to-machine
+  discovery, contact, transport negotiation and BLE/IP migration to robots,
+  embedded devices and hosted applications, from microcontrollers to servers.
+</p>
 
 <p align="center">
   <a href="https://github.com/machine-contact-layer/mcl-sdk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/machine-contact-layer/mcl-sdk/actions/workflows/ci.yml/badge.svg"></a>
@@ -99,7 +105,8 @@ allocates; every buffer is yours.
 | More examples | [`examples/`](examples/) |
 | Port it to your platform | `QUICKSTART.md` section 07 |
 | Know what a byte means | [mcl-wire](https://github.com/machine-contact-layer/mcl-wire) |
-| Know what is claimed | [conformance/ICS.md](https://github.com/machine-contact-layer/mcl-core/blob/main/conformance/ICS.md) |
+| Check maturity and conformance | [SPECIFICATION_INDEX.md](https://github.com/machine-contact-layer/mcl-core/blob/main/SPECIFICATION_INDEX.md) · [conformance profiles](https://github.com/machine-contact-layer/mcl-core/blob/main/spec/conformance-profiles-v1.md) |
+| Understand the security model | [SECURITY.md](https://github.com/machine-contact-layer/mcl-core/blob/main/SECURITY.md) |
 
 The primary reference SDK is a portable C99 implementation designed to run from resource-constrained microcontrollers through embedded systems and hosted applications without changing the protocol contract.
 
@@ -110,9 +117,10 @@ operations, two optional operations, and one event stream; MCL keeps the
 protocol choreography.
 
 **Integrating MCL into a product?** [`BUILDER_GUIDE.md`](BUILDER_GUIDE.md) walks
-the ten questions a builder actually asks and is explicit about what MCL does
-not do yet — including that `MCL Stranger-Contact 1` is claimable only with a
-stated caveat, and that there is no cryptography anywhere in v1.
+the ten questions a builder actually asks — installing, attaching a transport,
+announcing, hearing a peer, migrating, authentication, capabilities,
+conformance and what will change under you. v1 ships no cryptography, so
+authentication belongs in a layer you choose.
 
 Sizing a port? [`RESOURCE_ENVELOPE.md`](RESOURCE_ENVELOPE.md) records the
 executable portable structure sizes and the inclusive ESP32-S3 image, DRAM,
@@ -314,10 +322,11 @@ Node A (Presence semantic)
 Freestanding C99 reference implementation, validated against canonical Wire and
 Link components and exercised between two machines over real radios.
 
-For what this repository claims in the v1.0 release, see
-[`mcl-core/governance/V1_SCOPE.md`](../mcl-core/governance/V1_SCOPE.md). The
-public API is Stable in v1 at **source compatibility only**; no binary ABI
-stability is promised.
+`MCL Base 1` (`MCL_DEPLOYMENT_BASE_ARRANGED_1`) is Stable; `MCL
+Stranger-Contact 1` (`MCL_DEPLOYMENT_REFERENCE_1`) is Candidate. The public API
+is Stable in v1 at **source compatibility only**; no binary ABI stability is
+promised. Per-document maturity is in
+[`mcl-core/SPECIFICATION_INDEX.md`](https://github.com/machine-contact-layer/mcl-core/blob/main/SPECIFICATION_INDEX.md).
 
 ## Framed contact path
 
@@ -355,7 +364,7 @@ Properties the tests pin:
 
 `mcl_node_send_handoff`, `mcl_node_receive_handoff` and `mcl_node_apply_handoff`
 carry the migration controls defined in
-[`mcl-link/spec/link-handoff-control-v0.1.md`](../mcl-link/spec/link-handoff-control-v0.1.md)
+[`mcl-link/spec/link-handoff-control-v0.1.md`](https://github.com/machine-contact-layer/mcl-link/blob/main/spec/link-handoff-control-v0.1.md)
 as the payload of a `HANDOFF` Link frame.
 
 This is what makes migration an on-wire protocol rather than a sequence of local
@@ -406,11 +415,5 @@ reference delivered over the **wrong** medium. It was refused. That is the check
 path validation depends on, and a single-transport rig cannot construct it at
 all.
 
-The run also found a defect no loopback test could: every send path honoured
-`MCL_LINK_FLAG_DESTINATION` and then set `destination_ref` to zero, so an
-addressed frame was addressed to nobody. See
+Full record, including host and board logs:
 [`evidence/e4-dual-transport-migration-20260903`](evidence/e4-dual-transport-migration-20260903).
-
-None of this is independent interoperability. Both ends compile these same
-sources, so a shared misreading of the specification passes on both sides and is
-invisible in the result.
