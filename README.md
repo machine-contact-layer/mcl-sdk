@@ -4,7 +4,7 @@
 
 <h1 align="center">MCL SDK</h1>
 
-<p align="center"><strong>Build a machine that can meet another machine. One CMake project, no heap, no libc.</strong></p>
+<p align="center"><strong>Build a machine that can meet another machine. Freestanding C99: no heap, no libc.</strong></p>
 
 <p align="center">
   <a href="https://github.com/machine-contact-layer/mcl-sdk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/machine-contact-layer/mcl-sdk/actions/workflows/ci.yml/badge.svg"></a>
@@ -26,19 +26,34 @@
 > organization is the specification MCL is defined by; this is the code you
 > link against.
 
-## Run it in about a minute
+## Run it
+
+**From the release's developer SDK** — one CMake project, no sibling checkout:
 
 ```sh
-git clone https://github.com/machine-contact-layer/mcl-sdk
-cd mcl-sdk
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+curl -LO https://github.com/machine-contact-layer/mcl-core/raw/main/releases/v1.0.0/mcl-developer-sdk.tar.gz
+tar -xzf mcl-developer-sdk.tar.gz
+cmake -S mcl-developer-sdk -B build
 cmake --build build
-./build/examples/base_arranged_bearer
+./build/mcl_base_arranged_bearer
 ```
 
-Two machines meet over a bearer they already share, exchange presence, admit
-each other by local policy, and refuse an object they are not willing to carry
-— `MCL Base 1`, end to end, with no network, no microphone and no pairing step.
+**From the repositories** — `mcl-sdk` builds against its sibling
+specifications, so clone them side by side:
+
+```sh
+for r in mcl-core mcl-wire mcl-link mcl-sdk mcl-ap mcl-ip mcl-ble mcl-uwb; do
+  git clone https://github.com/machine-contact-layer/$r
+done
+cmake -S mcl-sdk -B build
+cmake --build build
+./build/mcl_sdk_base_arranged_bearer
+```
+
+Either way, two machines meet over a bearer they already share, exchange
+presence, admit each other by local policy, and refuse an object they are not
+willing to carry — `MCL Base 1`, end to end, with no network, no microphone and
+no pairing step.
 
 ## What using it looks like
 
@@ -47,23 +62,33 @@ each other by local policy, and refuse an object they are not willing to carry
 
 mcl_machine_t        machine;
 mcl_machine_config_t cfg;
+mcl_platform_t       platform = {0};
+
+/* The porting interface: a clock, and a way to put bytes on your bearer. */
+platform.clock_ms       = my_clock_ms;
+platform.transport_send = my_send;
+platform.user           = &my_bearer;
 
 /* Base 1: a bearer you already have. No discovery, no rendezvous. */
-mcl_machine_config_deployment(&cfg, MCL_DEPLOYMENT_BASE_ARRANGED_1, "node-a");
-
-mcl_machine_init(&machine, &cfg, &platform);   /* you supply tx/rx */
+mcl_machine_config_deployment(&cfg, MCL_DEPLOYMENT_BASE_ARRANGED_1,
+                              0xA1A1A1A1u, MCL_CONTACT_ROLE_INITIATOR);
+mcl_machine_init(&machine, &cfg, &platform);
 mcl_machine_start(&machine);
 
+/* Bytes that arrive on your bearer go in... */
+mcl_machine_receive(&machine, transport_id, data, size);
+
+/* ...and a regular poll reports what happened. */
 mcl_machine_event_t ev;
-while (mcl_machine_poll(&machine, &ev) == MCL_MACHINE_OK) {
-    if (ev.kind == MCL_MACHINE_EVENT_PEER_DETECTED) {
-        mcl_machine_admit(&machine);           /* your policy decides */
-    }
+if (mcl_machine_poll(&machine, &ev) == MCL_MACHINE_OK &&
+    ev.kind == MCL_MACHINE_EVENT_POLICY_REQUIRED) {
+    mcl_machine_admit(&machine);   /* your policy decides, never MCL */
 }
 ```
 
-You provide two functions — send bytes, receive bytes — over whatever you
-already have: a socket, a UART, a BLE characteristic, a test harness. MCL never
+For Base 1 you supply a monotonic clock and a send function, and hand
+received bytes to `mcl_machine_receive()` — over whatever bearer you already
+have: a socket, a UART, a BLE characteristic, a test harness. MCL never
 allocates; every buffer is yours.
 
 ## Where to go next
