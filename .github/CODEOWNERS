@@ -9,17 +9,24 @@
 # catch-all.
 
 #
-# WHY THESE PATHS NAME TWO OWNERS AND NOT ONE.
+# WHY THESE PATHS NAME TWO ACCOUNTS AND NOT ONE.
 #
 # They named only @0j0bit until 2026-09-12. That deadlocks: GitHub does not let
 # anyone approve their own pull request, and the branch ruleset grants no
 # bypass to administrators, so a pull request touching one of these paths and
 # authored by its sole code owner could never be merged by anyone.
 #
-# Both named accounts have write access, which a code owner must have to count.
-# These lines currently resolve to the same two people as the catch-all, so
-# their present effect is documentary: they record which paths are authorities.
-# If the catch-all ever widens, they narrow again on their own.
+# @0j0bit and @sed-boi are two GitHub accounts controlled by the SAME project
+# owner. Either account may satisfy the code-owner review requirement for a
+# change it did not author -- in practice, changes proposed by the
+# mcl-release-governor App and reviewed as @0j0bit. This is account redundancy,
+# NOT independent two-person review, and nothing here claims separation of
+# duties.
+#
+# Both accounts have write access, which a code owner must have to count. The
+# path lines below name the same accounts as the catch-all, so their present
+# effect is documentary: they record which paths are authorities. If the
+# catch-all ever widens, they narrow again on their own.
 
 * @0j0bit @sed-boi
 
