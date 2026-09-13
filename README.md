@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/banner.png" alt="OJOBIT" width="100%">
+  <img src="https://raw.githubusercontent.com/machine-contact-layer/.github/main/profile/banner.png" alt="OJOBIT" width="100%">
 </p>
 
 <h1 align="center">MCL SDK</h1>
